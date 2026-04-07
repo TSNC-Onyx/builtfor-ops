@@ -7,8 +7,7 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSignIn() {
     setError(null);
     setLoading(true);
     try {
@@ -18,6 +17,10 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter") handleSignIn();
   }
 
   return (
@@ -32,7 +35,6 @@ export default function Login() {
           border: "1px solid hsl(var(--surface-border))",
         }}
       >
-        {/* Logo / wordmark */}
         <div className="mb-8">
           <div
             className="font-display text-[28px] tracking-[0.06em] leading-none mb-1"
@@ -48,7 +50,7 @@ export default function Login() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           <div>
             <label
               className="block font-mono text-[10px] tracking-[0.14em] uppercase mb-1.5"
@@ -59,10 +61,10 @@ export default function Login() {
             <input
               type="email"
               autoComplete="email"
-              required
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full px-3 py-2 font-body text-[13px] bg-transparent outline-none focus:ring-0"
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 font-body text-[13px] bg-transparent outline-none"
               style={{
                 border: "1px solid hsl(var(--surface-border))",
                 color: "hsl(var(--foreground))",
@@ -80,10 +82,10 @@ export default function Login() {
             <input
               type="password"
               autoComplete="current-password"
-              required
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full px-3 py-2 font-body text-[13px] bg-transparent outline-none focus:ring-0"
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 font-body text-[13px] bg-transparent outline-none"
               style={{
                 border: "1px solid hsl(var(--surface-border))",
                 color: "hsl(var(--foreground))",
@@ -105,8 +107,9 @@ export default function Login() {
           )}
 
           <button
-            type="submit"
+            type="button"
             disabled={loading}
+            onClick={handleSignIn}
             className="w-full py-2.5 font-mono text-[11px] tracking-[0.16em] uppercase transition-opacity disabled:opacity-50"
             style={{
               backgroundColor: "hsl(var(--foreground))",
@@ -115,7 +118,7 @@ export default function Login() {
           >
             {loading ? "Signing in…" : "Sign In"}
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );
