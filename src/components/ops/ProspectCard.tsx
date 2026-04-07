@@ -1,4 +1,5 @@
 import type { Prospect } from "@/types/pipeline";
+import { verticalLabel } from "@/types/pipeline";
 import { isOverdue, daysSince, formatDate } from "@/lib/utils";
 
 export function ProspectCard({
@@ -14,6 +15,10 @@ export function ProspectCard({
 }) {
   const overdue = isOverdue(prospect.next_action_date);
   const age = daysSince(prospect.created_at);
+
+  // Resolve vertical display label — shows custom text when vertical = 'other'
+  const verticalDisplay = verticalLabel(prospect.vertical, prospect.vertical_custom);
+
   return (
     <div
       onClick={onClick}
@@ -34,7 +39,7 @@ export function ProspectCard({
         {prospect.full_name}
       </div>
       <div className="flex items-center gap-1 flex-wrap mb-1.5">
-        {[prospect.source, prospect.state, prospect.vertical].filter(Boolean).map((tag, i) => (
+        {[prospect.source, prospect.state, verticalDisplay].filter(Boolean).map((tag, i) => (
           <span
             key={i}
             className="font-mono text-[9px] tracking-[0.1em] uppercase px-1.5 py-0.5"
