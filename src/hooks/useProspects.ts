@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import type { Prospect, ProspectStage, Client } from "@/types/pipeline";
 
@@ -21,6 +22,7 @@ export function useUpdateProspectStage() {
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["prospects"] }),
+    onError: (err: Error) => toast.error(`Stage update failed: ${err.message}`),
   });
 }
 
@@ -31,7 +33,11 @@ export function useUpdateProspect() {
       const { error } = await supabase.from("prospects").update(updates).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["prospects"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      toast.success("Prospect saved.");
+    },
+    onError: (err: Error) => toast.error(`Save failed: ${err.message}`),
   });
 }
 
@@ -42,7 +48,11 @@ export function useAddProspect() {
       const { error } = await supabase.from("prospects").insert(prospect);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["prospects"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      toast.success("Prospect added.");
+    },
+    onError: (err: Error) => toast.error(`Add failed: ${err.message}`),
   });
 }
 
@@ -76,6 +86,11 @@ export function useConvertToClient() {
       const { error: stageError } = await supabase.from("prospects").update({ stage: "closed_won" }).eq("id", prospect.id);
       if (stageError) throw stageError;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["prospects", "clients"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Prospect converted to client.");
+    },
+    onError: (err: Error) => toast.error(`Conversion failed: ${err.message}`),
   });
 }

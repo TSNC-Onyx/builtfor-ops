@@ -3,8 +3,15 @@ import { useClients } from "@/hooks/useProspects";
 import { formatDate } from "@/lib/utils";
 
 export default function Clients() {
-  const { data: clients = [], isLoading } = useClients();
-  const statusColor = (s: string) => ({ onboarding: "hsl(var(--rust))", active: "hsl(var(--navy))", at_risk: "hsl(var(--rust))", churned: "hsl(var(--muted-foreground))", paused: "hsl(var(--muted-foreground))" }[s] ?? "hsl(var(--muted-foreground))");
+  const { data: clients = [], isLoading, isError } = useClients();
+
+  const statusColor = (s: string) => ({
+    onboarding: "hsl(var(--rust))",
+    active: "hsl(var(--navy))",
+    at_risk: "hsl(var(--rust))",
+    churned: "hsl(var(--muted-foreground))",
+    paused: "hsl(var(--muted-foreground))",
+  }[s] ?? "hsl(var(--muted-foreground))");
 
   return (
     <OpsShell>
@@ -13,8 +20,15 @@ export default function Clients() {
         <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{clients.length} active accounts</p>
       </div>
       <div className="px-6 py-4">
-        {isLoading && <div className="font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients…</div>}
-        {!isLoading && clients.length === 0 && (
+        {isLoading && (
+          <div className="font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients…</div>
+        )}
+        {isError && (
+          <div className="p-6 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--rust))", border: "1px solid hsl(var(--rust) / 0.3)", backgroundColor: "hsl(var(--rust) / 0.06)" }}>
+            Failed to load clients — check connection and refresh.
+          </div>
+        )}
+        {!isLoading && !isError && clients.length === 0 && (
           <div className="p-12 text-center" style={{ border: "1px dashed hsl(var(--border))" }}>
             <div className="font-mono text-[10px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>No clients yet</div>
             <div className="font-body text-[12px] mt-1" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>Convert a won prospect from the Pipeline view</div>
@@ -22,7 +36,11 @@ export default function Clients() {
         )}
         <div className="space-y-1">
           {clients.map(c => (
-            <div key={c.id} className="flex items-center gap-5 px-5 py-3.5 transition-colors" style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}>
+            <div
+              key={c.id}
+              className="flex items-center gap-5 px-5 py-3.5 transition-colors"
+              style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}
+            >
               <div className="flex-1 min-w-0">
                 <div className="font-body text-[14px] font-semibold" style={{ color: "hsl(var(--foreground))" }}>{c.business_name}</div>
                 <div className="font-body text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{c.owner_name} · {c.email}</div>
