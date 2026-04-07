@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 const EDGE_URL =
   "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-messages";
@@ -55,8 +56,7 @@ function Avatar({ author, avatarUrl }: { author: string; avatarUrl: string | nul
   );
 }
 
-export function DiscordFeed() {
-  const [open, setOpen] = useState(false);
+function DiscordPortal({ open, setOpen }: { open: boolean; setOpen: (v: boolean) => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +118,7 @@ export function DiscordFeed() {
 
   return (
     <>
-      {/* Sliding panel */}
+      {/* Sliding panel — portalled to body, escapes all stacking contexts */}
       <div
         aria-label="Discord live feed"
         aria-hidden={!open}
@@ -128,7 +128,7 @@ export function DiscordFeed() {
           right: 0,
           bottom: 0,
           width: "360px",
-          zIndex: 45,
+          zIndex: 9998,
           display: "flex",
           flexDirection: "column",
           backgroundColor: "hsl(var(--surface))",
@@ -352,13 +352,7 @@ export function DiscordFeed() {
         </div>
       </div>
 
-      {/*
-        Floating bubble — fixed bottom-right, hidden while panel is open,
-        restored when panel closes. Uses opacity + scale transition so the
-        disappear/reappear is smooth and non-jarring. pointer-events: none
-        when hidden prevents invisible click targets. Login is outside
-        OpsShell so this never mounts there.
-      */}
+      {/* Floating bubble — disappears when panel opens, restores on close */}
       <button
         onClick={() => setOpen(true)}
         aria-label="Open Discord feed"
@@ -366,7 +360,7 @@ export function DiscordFeed() {
           position: "fixed",
           bottom: "24px",
           right: "24px",
-          zIndex: 46,
+          zIndex: 9999,
           width: "44px",
           height: "44px",
           borderRadius: "var(--radius, 0px)",
@@ -376,9 +370,8 @@ export function DiscordFeed() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          cursor: open ? "default" : "pointer",
+          cursor: "pointer",
           padding: 0,
-          // Disappear when panel opens, restore when it closes
           opacity: open ? 0 : 1,
           transform: open ? "scale(0.75)" : "scale(1)",
           pointerEvents: open ? "none" : "auto",
@@ -404,8 +397,6 @@ export function DiscordFeed() {
             fill="#5865F2"
           />
         </svg>
-
-        {/* Unread badge — rust accent token */}
         {newCount > 0 && (
           <span
             style={{
@@ -433,5 +424,16 @@ export function DiscordFeed() {
         )}
       </button>
     </>
+  );
+}
+
+export function DiscordFeed() {
+  const [open, setOpen] = useState(false);
+
+  // Portal to document.body — escapes all ancestor stacking contexts
+  // and iframe overflow clipping in webcontainer preview environments
+  return createPortal(
+    <DiscordPortal open={open} setOpen={setOpen} />,
+    document.body
   );
 }
