@@ -1,6 +1,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
+import { DiscordFeed } from "./DiscordFeed";
 import { useTheme } from "@/hooks/useTheme";
 import { useProfile, formatDisplayName } from "@/hooks/useProfile";
 
@@ -179,6 +180,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
       </div>
 
       <main className="flex-1 min-w-0">{children}</main>
+
+      {/* Discord live feed — desktop floating bubble + slide panel */}
+      <DiscordFeed />
     </div>
   );
 }
