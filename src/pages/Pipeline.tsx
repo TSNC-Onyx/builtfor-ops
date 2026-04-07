@@ -5,20 +5,25 @@ import { PipelineColumn } from "@/components/ops/PipelineColumn";
 import { ProspectDetail } from "@/components/ops/ProspectDetail";
 import { AddProspectModal } from "@/components/ops/AddProspectModal";
 import { useProspects, useUpdateProspectStage } from "@/hooks/useProspects";
-import { STAGE_ORDER } from "@/types/pipeline";
+import { useClients } from "@/hooks/useClients";
+import { STAGE_ORDER, STAGE_LABELS } from "@/types/pipeline";
 import type { Prospect, ProspectStage } from "@/types/pipeline";
+
+const ACTIVE_STAGES: ProspectStage[] = ["lead", "contacted", "demo_scheduled", "proposal_sent", "design_partner"];
 
 export default function Pipeline() {
   const { data: prospects = [], isLoading, isError } = useProspects();
+  const { data: clients = [] } = useClients();
   const updateStage = useUpdateProspectStage();
-  // Store selected prospect ID only — derive live data from query cache in ProspectDetail.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [viewMode, setViewMode] = useState<"active" | "all">("active");
+  // Mobile: which stage tab is visible
+  const [mobileStage, setMobileStage] = useState<ProspectStage>("lead");
   const dragRef = useRef<Prospect | null>(null);
 
-  const activeStages: ProspectStage[] = ["lead", "contacted", "demo_scheduled", "proposal_sent", "design_partner"];
-  const visibleStages = viewMode === "active" ? activeStages : STAGE_ORDER;
+  const visibleStages = viewMode === "active" ? ACTIVE_STAGES : STAGE_ORDER;
+
   const byStage = STAGE_ORDER.reduce<Record<ProspectStage, Prospect[]>>((acc, s) => {
     acc[s] = prospects.filter(p => p.stage === s);
     return acc;
@@ -48,14 +53,17 @@ export default function Pipeline() {
 
   return (
     <OpsShell>
-      <MetricsBar prospects={prospects} />
-      <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
+      <MetricsBar prospects={prospects} clients={clients} />
+
+      {/* Header */}
+      <div className="px-4 md:px-6 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <div>
-          <h1 className="font-display text-[28px] tracking-[0.02em] leading-none" style={{ color: "hsl(var(--foreground))" }}>Pipeline</h1>
-          <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{prospects.length} total prospects</p>
+          <h1 className="font-display text-[24px] md:text-[28px] tracking-[0.02em] leading-none" style={{ color: "hsl(var(--foreground))" }}>Pipeline</h1>
+          <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{prospects.length} total</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex" style={{ border: "1px solid hsl(var(--border))" }}>
+          {/* View mode toggle — hidden on mobile to save space */}
+          <div className="hidden sm:flex" style={{ border: "1px solid hsl(var(--border))" }}>
             {(["active", "all"] as const).map(v => (
               <button
                 key={v}
@@ -72,16 +80,56 @@ export default function Pipeline() {
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-1.5 hover:opacity-90"
+            className="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 hover:opacity-90"
             style={{ backgroundColor: "hsl(var(--rust))", color: "hsl(var(--off-white))" }}
           >
-            + Add prospect
+            + Add
           </button>
         </div>
       </div>
-      <div className="flex h-[calc(100vh-185px)] overflow-hidden">
+
+      {/* --- MOBILE VIEW: Stage tab strip + single column --- */}
+      <div className="md:hidden flex flex-col" style={{ height: "calc(100vh - 190px)" }}>
+        {/* Stage tab strip */}
+        <div className="flex overflow-x-auto flex-shrink-0" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
+          {visibleStages.map(s => (
+            <button
+              key={s}
+              onClick={() => setMobileStage(s)}
+              className="flex-shrink-0 px-3 py-2 font-mono text-[9px] tracking-[0.1em] uppercase transition-colors"
+              style={{
+                borderBottom: mobileStage === s ? `2px solid hsl(var(--rust))` : "2px solid transparent",
+                color: mobileStage === s ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
+                backgroundColor: "transparent",
+              }}
+            >
+              {STAGE_LABELS[s].replace("Closed — ", "")} ({byStage[s].length})
+            </button>
+          ))}
+        </div>
+        {/* Single active column */}
+        <div className="flex-1 overflow-y-auto p-3">
+          <PipelineColumn
+            stage={mobileStage}
+            prospects={byStage[mobileStage]}
+            onCardClick={p => setSelectedId(p.id)}
+            onDrop={handleDrop}
+            onDragStart={p => { dragRef.current = p; }}
+            showHeader={false}
+          />
+        </div>
+        {/* Mobile detail overlay */}
+        {selectedId && (
+          <div className="fixed inset-0 z-40 overflow-y-auto" style={{ backgroundColor: "hsl(var(--surface))", paddingTop: "56px" }}>
+            <ProspectDetail prospectId={selectedId} onClose={() => setSelectedId(null)} />
+          </div>
+        )}
+      </div>
+
+      {/* --- DESKTOP VIEW: Horizontal kanban --- */}
+      <div className="hidden md:flex" style={{ height: "calc(100vh - 185px)", overflow: "hidden" }}>
         <div className="flex-1 overflow-x-auto">
-          <div className="flex gap-2 p-4 h-full">
+          <div className="flex gap-2 p-3 h-full">
             {visibleStages.map(stage => (
               <PipelineColumn
                 key={stage}
@@ -95,11 +143,12 @@ export default function Pipeline() {
           </div>
         </div>
         {selectedId && (
-          <div className="w-80 flex-shrink-0 overflow-y-auto">
+          <div className="w-80 flex-shrink-0 overflow-y-auto" style={{ borderLeft: "1px solid hsl(var(--border))" }}>
             <ProspectDetail prospectId={selectedId} onClose={() => setSelectedId(null)} />
           </div>
         )}
       </div>
+
       {showAdd && <AddProspectModal onClose={() => setShowAdd(false)} />}
     </OpsShell>
   );

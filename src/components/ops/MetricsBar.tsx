@@ -1,56 +1,73 @@
 import { useMemo } from "react";
-import type { Prospect } from "@/types/pipeline";
+import type { Prospect, Client } from "@/types/pipeline";
 import { FOUNDING_SPOTS } from "@/types/pipeline";
 import { isOverdue } from "@/lib/utils";
 
-export function MetricsBar({ prospects }: { prospects: Prospect[] }) {
+interface MetricsBarProps {
+  prospects: Prospect[];
+  clients: Client[];
+}
+
+export function MetricsBar({ prospects, clients }: MetricsBarProps) {
   const metrics = useMemo(() => {
-    const overdue = prospects.filter(p => p.stage !== "closed_won" && p.stage !== "closed_lost" && isOverdue(p.next_action_date)).length;
+    const overdue = prospects.filter(
+      p => p.stage !== "closed_won" && p.stage !== "closed_lost" && isOverdue(p.next_action_date)
+    ).length;
     const active = prospects.filter(p => p.stage !== "closed_won" && p.stage !== "closed_lost").length;
     const designPartners = prospects.filter(p => p.stage === "design_partner" || p.stage === "closed_won").length;
-    const bySource = prospects.reduce<Record<string, number>>((acc, p) => { const s = p.source ?? "unknown"; acc[s] = (acc[s] ?? 0) + 1; return acc; }, {});
-    const topSource = Object.entries(bySource).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
-    return { overdue, active, designPartners, topSource };
-  }, [prospects]);
+    const activeClients = clients.filter(c => c.status === "active" || c.status === "onboarding").length;
+    // MRR: founding @ $300, standard @ $400; paused/churned = $0
+    const mrr = clients.reduce((sum, c) => {
+      if (c.status === "churned" || c.status === "paused") return sum;
+      return sum + (c.pricing_tier === "founding" ? 300 : 400);
+    }, 0);
+    return { overdue, active, designPartners, activeClients, mrr };
+  }, [prospects, clients]);
 
   const spotsLeft = Math.max(0, FOUNDING_SPOTS - metrics.designPartners);
 
   return (
     <div style={{ borderBottom: "1px solid hsl(var(--border))", backgroundColor: "hsl(var(--surface))" }}>
       {metrics.overdue > 0 && (
-        <div className="bg-rust px-6 py-2">
-          <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-off-white">
+        <div style={{ backgroundColor: "hsl(var(--rust))", padding: "6px 24px" }}>
+          <span className="font-mono text-[10px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--off-white))" }}>
             ⚠ {metrics.overdue} prospect{metrics.overdue > 1 ? "s" : ""} with overdue next action
           </span>
         </div>
       )}
-      <div className="px-6 py-3 flex items-center gap-8 flex-wrap">
-        <div>
+      <div className="px-4 md:px-6 py-3 flex items-center gap-4 md:gap-8 overflow-x-auto flex-wrap md:flex-nowrap">
+        {/* Founding spots */}
+        <div className="flex-shrink-0">
           <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Founding spots</div>
           <div className="flex items-center gap-1.5">
             {Array.from({ length: FOUNDING_SPOTS }).map((_, i) => (
-              <span key={i} className={`inline-block w-3 h-3 border ${i < metrics.designPartners ? "bg-rust border-rust" : ""}`}
-                style={i < metrics.designPartners ? {} : { borderColor: "hsl(var(--border))" }} />
+              <span key={i} className="inline-block w-3 h-3 border"
+                style={i < metrics.designPartners
+                  ? { backgroundColor: "hsl(var(--rust))", borderColor: "hsl(var(--rust))" }
+                  : { borderColor: "hsl(var(--border))" }
+                } />
             ))}
             <span className="font-mono text-[10px] ml-1" style={{ color: "hsl(var(--foreground))" }}>{spotsLeft} left</span>
           </div>
         </div>
-        <div className="w-px h-8" style={{ backgroundColor: "hsl(var(--border))" }} />
-        <div>
-          <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Active prospects</div>
-          <div className="font-display text-2xl leading-none" style={{ color: "hsl(var(--foreground))" }}>{metrics.active}</div>
-        </div>
-        <div className="w-px h-8" style={{ backgroundColor: "hsl(var(--border))" }} />
-        <div>
-          <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Overdue actions</div>
-          <div className="font-display text-2xl leading-none" style={{ color: metrics.overdue > 0 ? "hsl(var(--rust))" : "hsl(var(--foreground))" }}>{metrics.overdue}</div>
-        </div>
-        <div className="w-px h-8" style={{ backgroundColor: "hsl(var(--border))" }} />
-        <div>
-          <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>Top source</div>
-          <div className="font-mono text-[11px] tracking-[0.08em] uppercase" style={{ color: "hsl(var(--foreground))" }}>{metrics.topSource}</div>
-        </div>
+        <div className="w-px h-8 flex-shrink-0" style={{ backgroundColor: "hsl(var(--border))" }} />
+        <Stat label="Active prospects" value={metrics.active} />
+        <div className="w-px h-8 flex-shrink-0" style={{ backgroundColor: "hsl(var(--border))" }} />
+        <Stat label="Active clients" value={metrics.activeClients} />
+        <div className="w-px h-8 flex-shrink-0" style={{ backgroundColor: "hsl(var(--border))" }} />
+        <Stat label="MRR" value={`$${metrics.mrr.toLocaleString()}`} />
+        <div className="w-px h-8 flex-shrink-0" style={{ backgroundColor: "hsl(var(--border))" }} />
+        <Stat label="Overdue actions" value={metrics.overdue} highlight={metrics.overdue > 0} />
       </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, highlight }: { label: string; value: string | number; highlight?: boolean }) {
+  return (
+    <div className="flex-shrink-0">
+      <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</div>
+      <div className="font-display text-2xl leading-none" style={{ color: highlight ? "hsl(var(--rust))" : "hsl(var(--foreground))" }}>{value}</div>
     </div>
   );
 }
