@@ -20,6 +20,20 @@ const fieldStyle: React.CSSProperties = {
   backgroundColor: "hsl(var(--surface-raised))", color: "hsl(var(--foreground))", outline: "none",
 };
 
+// Business name input styled to match ProspectCard — font-body, semibold, 13px
+const businessNameInputStyle: React.CSSProperties = {
+  width: "100%",
+  fontFamily: "'DM Sans', sans-serif",
+  fontSize: "13px",
+  fontWeight: 600,
+  lineHeight: "1.25",
+  padding: "8px 12px",
+  border: "1px solid hsl(var(--border))",
+  backgroundColor: "hsl(var(--surface-raised))",
+  color: "hsl(var(--foreground))",
+  outline: "none",
+};
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -75,24 +89,45 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
   }
 
   function handleConvert() {
-    if (confirm(`Convert ${prospect!.business_name} to a client?`)) {
-      convert.mutate(prospect!, { onSuccess: onClose });
+    if (confirm(`Convert ${form.business_name ?? prospect.business_name} to a client?`)) {
+      convert.mutate({ ...prospect, ...form } as Prospect, { onSuccess: onClose });
     }
   }
 
   const showCustom = (form.vertical ?? prospect.vertical) === "other";
+  // Live business name — reflects in-progress edits before save
+  const liveBusinessName = form.business_name ?? prospect.business_name;
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: "hsl(var(--surface))", borderLeft: "1px solid hsl(var(--border))" }}>
+      {/* Header — shows live name so changes are previewed immediately */}
       <div className="px-6 py-4 flex items-start justify-between gap-4" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
-        <div>
-          <div className="font-display text-[22px] tracking-[0.02em] leading-tight" style={{ color: "hsl(var(--foreground))" }}>{prospect.business_name}</div>
+        <div className="min-w-0 flex-1">
+          {/* Display title mirrors card: font-body semibold 13px — updates live as user types */}
+          <div
+            className="font-body font-semibold leading-tight truncate"
+            style={{ fontSize: "13px", color: "hsl(var(--foreground))" }}
+          >
+            {liveBusinessName}
+          </div>
           <div className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{prospect.full_name}</div>
         </div>
-        <button onClick={onClose} className="text-lg leading-none" style={{ color: "hsl(var(--muted-foreground))" }}>✕</button>
+        <button onClick={onClose} className="text-lg leading-none flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>✕</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+        {/* Business name — editable, styled to match pipeline card exactly */}
+        <Field label="Business name">
+          <input
+            type="text"
+            value={form.business_name ?? prospect.business_name}
+            onChange={e => set("business_name", e.target.value)}
+            style={businessNameInputStyle}
+            placeholder="Business name"
+          />
+        </Field>
+
         <Field label="Stage">
           <select value={form.stage ?? prospect.stage} onChange={e => set("stage", e.target.value as ProspectStage)} style={fieldStyle}>
             {STAGE_ORDER.map(s => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
@@ -124,7 +159,6 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
 
         <Field label="Email"><input value={form.email ?? ""} onChange={e => set("email", e.target.value)} style={fieldStyle} /></Field>
 
-        {/* Phone — auto-formatted */}
         <Field label="Phone">
           <input
             type="tel"
@@ -136,18 +170,22 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
         </Field>
 
         <Field label="State"><input maxLength={2} value={form.state ?? ""} onChange={e => set("state", e.target.value as any)} style={fieldStyle} placeholder="NC" /></Field>
+
         <Field label="Source">
           <select value={form.source ?? ""} onChange={e => set("source", e.target.value)} style={fieldStyle}>
             <option value="">—</option>
             {Object.entries(SOURCE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Field>
+
         <Field label="Next action"><input value={form.next_action ?? ""} onChange={e => set("next_action", e.target.value)} style={fieldStyle} placeholder="Send proposal" /></Field>
         <Field label="Due date"><input type="date" value={form.next_action_date ?? ""} onChange={e => set("next_action_date", e.target.value)} style={fieldStyle} /></Field>
         <Field label="Notes"><textarea rows={4} value={form.notes ?? ""} onChange={e => set("notes", e.target.value)} style={{ ...fieldStyle, resize: "none" }} /></Field>
+
         {form.stage === "closed_lost" && (
           <Field label="Lost reason"><input value={form.lost_reason ?? ""} onChange={e => set("lost_reason", e.target.value)} style={fieldStyle} /></Field>
         )}
+
         <div className="pt-2 space-y-1" style={{ borderTop: "1px solid hsl(var(--border))" }}>
           <div className="font-mono text-[9px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>Created {formatDate(prospect.created_at)}</div>
           <div className="font-mono text-[9px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>Updated {formatDate(prospect.updated_at)}</div>
