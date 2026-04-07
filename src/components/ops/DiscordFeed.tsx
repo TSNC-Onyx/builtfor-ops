@@ -1,23 +1,123 @@
-import { useState, useEffect } from "react";
-import { useTheme } from "@/hooks/useTheme";
+import { useState, useEffect, useRef } from "react";
 
-const GUILD_ID = "1491163323490762872";
+const EDGE_URL =
+  "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-messages";
+const POLL_INTERVAL = 15_000; // 15 seconds
+
+interface Message {
+  id: string;
+  content: string;
+  timestamp: string;
+  author: string;
+  avatarUrl: string | null;
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function Avatar({ author, avatarUrl }: { author: string; avatarUrl: string | null }) {
+  const initials = author.slice(0, 2).toUpperCase();
+  if (avatarUrl) {
+    return (
+      <img
+        src={avatarUrl}
+        alt={author}
+        width={28}
+        height={28}
+        style={{ borderRadius: "50%", flexShrink: 0, display: "block" }}
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+      />
+    );
+  }
+  return (
+    <div
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: "50%",
+        backgroundColor: "#5865F2",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        fontFamily: "'DM Mono', monospace",
+        fontSize: "10px",
+        color: "#fff",
+        fontWeight: 500,
+      }}
+    >
+      {initials}
+    </div>
+  );
+}
 
 export function DiscordFeed() {
-  const { theme } = useTheme();
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newCount, setNewCount] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const prevIdRef = useRef<string | null>(null);
+  const hasFetchedRef = useRef(false);
 
-  // Delay iframe mount until panel opens to avoid background network hit
+  async function fetchMessages(quiet = false) {
+    if (!quiet) setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${EDGE_URL}?limit=30`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: { messages: Message[] } = await res.json();
+      const msgs = data.messages ?? [];
+      if (msgs.length > 0) {
+        const latestId = msgs[msgs.length - 1].id;
+        if (prevIdRef.current && latestId !== prevIdRef.current && !open) {
+          setNewCount((n) => n + 1);
+        }
+        prevIdRef.current = latestId;
+      }
+      setMessages(msgs);
+    } catch (e) {
+      setError("Could not load messages.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Initial fetch + poll
   useEffect(() => {
-    if (open && !mounted) setMounted(true);
-  }, [open, mounted]);
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchMessages();
+    }
+    const id = setInterval(() => fetchMessages(true), POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, []);
 
-  const widgetTheme = theme === "dark" ? "dark" : "light";
-  const src = `https://discord.com/widget?id=${GUILD_ID}&theme=${widgetTheme}`;
+  // Clear badge + scroll to bottom when panel opens
+  useEffect(() => {
+    if (open) {
+      setNewCount(0);
+      setTimeout(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, 60);
+    }
+  }, [open]);
+
+  // Auto-scroll to bottom when new messages arrive while panel is open
+  useEffect(() => {
+    if (open && scrollRef.current) {
+      const el = scrollRef.current;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      if (nearBottom) el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, open]);
 
   return (
-    // Desktop only — hidden on mobile
     <div className="hidden md:block">
       {/* Sliding panel */}
       <div
@@ -25,7 +125,7 @@ export function DiscordFeed() {
         aria-hidden={!open}
         style={{
           position: "fixed",
-          top: "56px", // clears the 14-unit (56px) sticky header
+          top: "56px",
           right: 0,
           bottom: 0,
           width: "360px",
@@ -52,7 +152,6 @@ export function DiscordFeed() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            {/* Discord blurple dot */}
             <span
               style={{
                 display: "inline-block",
@@ -72,52 +171,177 @@ export function DiscordFeed() {
                 color: "hsl(var(--muted-foreground))",
               }}
             >
-              Discord — Live
+              #general — Live
             </span>
           </div>
-          <button
-            onClick={() => setOpen(false)}
-            aria-label="Close Discord feed"
-            style={{
-              width: "28px",
-              height: "28px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "hsl(var(--muted-foreground))",
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" />
-            </svg>
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <button
+              onClick={() => fetchMessages()}
+              aria-label="Refresh messages"
+              style={{
+                width: "28px",
+                height: "28px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "hsl(var(--muted-foreground))",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M13.65 2.35A8 8 0 1 0 15 8h-2a6 6 0 1 1-1.05-3.41L10 6h5V1l-1.35 1.35z"
+                  fill="currentColor"
+                />
+              </svg>
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Close Discord feed"
+              style={{
+                width: "28px",
+                height: "28px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "hsl(var(--muted-foreground))",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        {/* Discord widget iframe */}
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          {mounted && (
-            <iframe
-              src={src}
-              title="Discord live feed"
-              sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+        {/* Message feed */}
+        <div
+          ref={scrollRef}
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "12px 0",
+            display: "flex",
+            flexDirection: "column",
+            gap: "2px",
+          }}
+        >
+          {loading && messages.length === 0 && (
+            <div
               style={{
-                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 height: "100%",
-                border: "none",
-                display: "block",
+                fontFamily: "'DM Mono', monospace",
+                fontSize: "11px",
+                color: "hsl(var(--muted-foreground))",
+                letterSpacing: "0.08em",
               }}
-            />
+            >
+              Loading…
+            </div>
           )}
+          {error && (
+            <div
+              style={{
+                margin: "16px",
+                padding: "10px 12px",
+                backgroundColor: "hsl(var(--destructive) / 0.08)",
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: "12px",
+                color: "hsl(var(--destructive))",
+              }}
+            >
+              {error}
+            </div>
+          )}
+          {!loading && !error && messages.length === 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100%",
+                fontFamily: "'DM Mono', monospace",
+                fontSize: "11px",
+                color: "hsl(var(--muted-foreground))",
+                opacity: 0.6,
+                letterSpacing: "0.08em",
+              }}
+            >
+              No messages yet
+            </div>
+          )}
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              style={{
+                display: "flex",
+                gap: "10px",
+                padding: "6px 16px",
+                alignItems: "flex-start",
+              }}
+            >
+              <Avatar author={msg.author} avatarUrl={msg.avatarUrl} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "2px" }}>
+                  <span
+                    style={{
+                      fontFamily: "'DM Sans', sans-serif",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      color: "hsl(var(--foreground))",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {msg.author}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: "'DM Mono', monospace",
+                      fontSize: "9px",
+                      color: "hsl(var(--muted-foreground))",
+                      opacity: 0.7,
+                      letterSpacing: "0.06em",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {formatTime(msg.timestamp)}
+                  </span>
+                </div>
+                <p
+                  style={{
+                    margin: 0,
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: "13px",
+                    color: "hsl(var(--foreground))",
+                    opacity: 0.85,
+                    lineHeight: 1.45,
+                    wordBreak: "break-word",
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  {msg.content || (
+                    <span style={{ opacity: 0.35, fontStyle: "italic" }}>[attachment]</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Floating bubble button */}
+      {/* Floating bubble */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close Discord feed" : "Open Discord feed"}
         style={{
           position: "fixed",
@@ -137,20 +361,45 @@ export function DiscordFeed() {
           transition: "background-color 0.15s ease, box-shadow 0.15s ease",
           padding: 0,
         }}
-        onMouseEnter={e => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 4px 20px rgba(10,20,40,0.18)";
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.boxShadow =
+            "0 4px 20px rgba(10,20,40,0.18)";
         }}
-        onMouseLeave={e => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 2px 12px rgba(10,20,40,0.10)";
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.boxShadow =
+            "0 2px 12px rgba(10,20,40,0.10)";
         }}
       >
-        {/* Discord logo mark */}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path
             d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.053a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.026c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"
             fill="#5865F2"
           />
         </svg>
+        {/* Unread badge */}
+        {newCount > 0 && !open && (
+          <span
+            style={{
+              position: "absolute",
+              top: "2px",
+              right: "2px",
+              width: "16px",
+              height: "16px",
+              borderRadius: "50%",
+              backgroundColor: "hsl(var(--accent))",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontFamily: "'DM Mono', monospace",
+              fontSize: "8px",
+              color: "#fff",
+              fontWeight: 600,
+              lineHeight: 1,
+            }}
+          >
+            {newCount > 9 ? "9+" : newCount}
+          </span>
+        )}
       </button>
     </div>
   );
