@@ -2,6 +2,7 @@ import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { useTheme } from "@/hooks/useTheme";
+import { useProfile, formatDisplayName } from "@/hooks/useProfile";
 
 const NAV = [
   { to: "/", label: "Dashboard" },
@@ -12,6 +13,7 @@ const NAV = [
 export function OpsShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const { theme } = useTheme();
+  const profile = useProfile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const logoStroke = theme === "dark" ? "hsl(38,33%,92%)" : "hsl(213,58%,27%)";
 
@@ -23,6 +25,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [drawerOpen]);
+
+  const displayName = profile ? formatDisplayName(profile.full_name) : null;
+  const role = profile?.role ?? null;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: "hsl(var(--background))" }}>
@@ -75,7 +80,27 @@ export function OpsShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        <div className="ml-auto">
+        {/* Desktop right — user identity + theme toggle */}
+        <div className="ml-auto flex items-center gap-4">
+          {/* User identity — desktop only, subtle */}
+          {displayName && (
+            <div className="hidden md:flex flex-col items-end gap-0">
+              <span
+                className="font-body text-[12px] leading-tight"
+                style={{ color: "hsl(var(--nav-text-muted))", fontWeight: 500 }}
+              >
+                {displayName}
+              </span>
+              {role && (
+                <span
+                  className="font-mono text-[9px] tracking-[0.12em] uppercase leading-tight"
+                  style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.65 }}
+                >
+                  {role}
+                </span>
+              )}
+            </div>
+          )}
           <ThemeToggle />
         </div>
       </header>
@@ -91,7 +116,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
 
       {/* Mobile drawer panel */}
       <div
-        className="fixed top-0 left-0 h-full z-50 md:hidden flex flex-col transition-transform duration-250"
+        className="fixed top-0 left-0 h-full z-50 md:hidden flex flex-col"
         style={{
           width: "240px",
           backgroundColor: "hsl(var(--nav-bg))",
@@ -100,7 +125,8 @@ export function OpsShell({ children }: { children: ReactNode }) {
           transition: "transform 0.22s cubic-bezier(0.4,0,0.2,1)",
         }}
       >
-        <div className="h-14 flex items-center px-5 gap-2.5" style={{ borderBottom: "1px solid hsl(var(--nav-border))" }}>
+        {/* Drawer header */}
+        <div className="h-14 flex items-center px-5 gap-2.5 flex-shrink-0" style={{ borderBottom: "1px solid hsl(var(--nav-border))" }}>
           <svg className="w-7 h-7 flex-shrink-0" viewBox="0 0 38 38" fill="none">
             <rect x="4" y="12" width="30" height="22" rx="0" fill="none" stroke={logoStroke} strokeWidth="2.2" />
             <path d="M13 12V9C13 7.34 14.34 6 16 6H22C23.66 6 25 7.34 25 9V12" fill="none" stroke={logoStroke} strokeWidth="2.2" />
@@ -108,7 +134,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
           </svg>
           <span className="font-display text-[18px] tracking-[0.04em]" style={{ color: "hsl(var(--nav-text))" }}>BuiltFor Ops</span>
         </div>
-        <nav className="flex flex-col gap-1 p-3 flex-1">
+
+        {/* Nav links — scrollable middle section */}
+        <nav className="flex flex-col gap-1 p-3 flex-1 overflow-y-auto">
           {NAV.map(n => (
             <Link key={n.to} to={n.to}
               className="font-mono text-[11px] tracking-[0.12em] uppercase px-4 py-3 transition-colors"
@@ -119,6 +147,35 @@ export function OpsShell({ children }: { children: ReactNode }) {
             >{n.label}</Link>
           ))}
         </nav>
+
+        {/* User identity footer — always visible, pinned to drawer bottom */}
+        <div
+          className="flex-shrink-0 px-5 py-4"
+          style={{ borderTop: "1px solid hsl(var(--nav-border))" }}
+        >
+          {profile ? (
+            <>
+              <div
+                className="font-body text-[13px] leading-tight"
+                style={{ color: "hsl(var(--nav-text))", fontWeight: 500 }}
+              >
+                {profile.full_name}
+              </div>
+              <div
+                className="font-mono text-[9px] tracking-[0.12em] uppercase mt-0.5"
+                style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.7 }}
+              >
+                {profile.role}
+              </div>
+            </>
+          ) : (
+            // Placeholder skeleton when profile hasn't loaded yet
+            <>
+              <div className="h-3 w-28 animate-pulse" style={{ backgroundColor: "hsl(var(--nav-border))" }} />
+              <div className="h-2 w-16 mt-1.5 animate-pulse" style={{ backgroundColor: "hsl(var(--nav-border))" }} />
+            </>
+          )}
+        </div>
       </div>
 
       <main className="flex-1 min-w-0">{children}</main>
