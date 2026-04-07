@@ -14,17 +14,24 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// When Supabase env vars are absent (Bolt.new visual preview), skip auth entirely.
+const SUPABASE_CONFIGURED =
+  !!import.meta.env.VITE_SUPABASE_URL &&
+  import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
+
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [session, setSession] = useState<Session | null | undefined>(
+    // If Supabase is not configured, treat as a passthrough immediately.
+    SUPABASE_CONFIGURED ? undefined : null
+  );
 
   useEffect(() => {
-    // Hydrate from existing session immediately
+    if (!SUPABASE_CONFIGURED) return;
+
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
 
-    // Keep in sync with auth state changes (login / logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
-      // Invalidate all queries on auth change so stale data is never shown
       queryClient.clear();
     });
 
@@ -34,7 +41,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // Still resolving session from storage
   if (session === undefined) return null;
 
-  if (!session) return <Login />;
+  // No session and Supabase is live — show login
+  if (!session && SUPABASE_CONFIGURED) return <Login />;
 
   return <>{children}</>;
 }
