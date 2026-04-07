@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { Prospect, ProspectStage, IndustryVertical } from "@/types/pipeline";
 import { STAGE_LABELS, STAGE_ORDER, SOURCE_LABELS } from "@/types/pipeline";
 import { useUpdateProspect, useConvertToClient, useProspects } from "@/hooks/useProspects";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatPhone } from "@/lib/utils";
 
 const VERTICALS: { value: IndustryVertical; label: string }[] = [
   { value: "landscaping", label: "Landscaping" },
@@ -55,7 +55,6 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
     setDirty(true);
   }
 
-  // When vertical changes away from 'other', clear the custom label
   function handleVerticalChange(v: IndustryVertical) {
     setForm(f => ({
       ...f,
@@ -63,6 +62,10 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
       vertical_custom: v === "other" ? (f.vertical_custom ?? "") : null,
     }));
     setDirty(true);
+  }
+
+  function handlePhone(raw: string) {
+    set("phone", formatPhone(raw));
   }
 
   function save() {
@@ -96,7 +99,6 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
           </select>
         </Field>
 
-        {/* Vertical */}
         <Field label="Vertical">
           <select
             value={form.vertical ?? prospect.vertical}
@@ -107,7 +109,6 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
           </select>
         </Field>
 
-        {/* Custom vertical — only shown when 'other' selected */}
         {showCustom && (
           <Field label="Specify trade / industry *">
             <input
@@ -116,16 +117,24 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
               value={form.vertical_custom ?? ""}
               onChange={e => set("vertical_custom", e.target.value)}
               autoFocus
-              style={{
-                ...fieldStyle,
-                border: "1px solid hsl(var(--rust) / 0.5)",
-              }}
+              style={{ ...fieldStyle, border: "1px solid hsl(var(--rust) / 0.5)" }}
             />
           </Field>
         )}
 
         <Field label="Email"><input value={form.email ?? ""} onChange={e => set("email", e.target.value)} style={fieldStyle} /></Field>
-        <Field label="Phone"><input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} style={fieldStyle} /></Field>
+
+        {/* Phone — auto-formatted */}
+        <Field label="Phone">
+          <input
+            type="tel"
+            placeholder="(555) 000-0000"
+            value={form.phone ?? ""}
+            onChange={e => handlePhone(e.target.value)}
+            style={fieldStyle}
+          />
+        </Field>
+
         <Field label="State"><input maxLength={2} value={form.state ?? ""} onChange={e => set("state", e.target.value as any)} style={fieldStyle} placeholder="NC" /></Field>
         <Field label="Source">
           <select value={form.source ?? ""} onChange={e => set("source", e.target.value)} style={fieldStyle}>

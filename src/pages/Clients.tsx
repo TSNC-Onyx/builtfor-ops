@@ -3,7 +3,7 @@ import { OpsShell } from "@/components/ops/OpsShell";
 import { MetricsBar } from "@/components/ops/MetricsBar";
 import { useProspects } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
-import { formatDate } from "@/lib/utils";
+import { formatDate, displayPhone } from "@/lib/utils";
 import type { Client, ClientStatus, PricingTier, IndustryVertical } from "@/types/pipeline";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 
@@ -11,7 +11,7 @@ const PAGE_SIZE = 15;
 
 const STATUS_OPTIONS: ClientStatus[] = ["onboarding", "active", "at_risk", "churned", "paused"];
 const TIER_OPTIONS: PricingTier[] = ["founding", "standard"];
-const VERTICAL_OPTIONS: IndustryVertical[] = ["landscaping", "hvac", "plumbing", "electrical", "pest_control", "cleaning"];
+const VERTICAL_OPTIONS: IndustryVertical[] = ["landscaping", "hvac", "plumbing", "electrical", "pest_control", "cleaning", "other"];
 
 const statusColor = (s: string): string => ({
   onboarding: "hsl(20,63%,47%)",
@@ -31,7 +31,6 @@ export default function Clients() {
   const [page, setPage] = useState(1);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
-  // Reset page on filter/search change
   const resetPage = () => setPage(1);
 
   const filtered = useMemo(() => {
@@ -41,7 +40,7 @@ export default function Clients() {
       if (filterTier !== "all" && c.pricing_tier !== filterTier) return false;
       if (filterVertical !== "all" && c.vertical !== filterVertical) return false;
       if (q && !
-        [c.business_name, c.owner_name, c.email, c.state, c.vertical]
+        [c.business_name, c.owner_name, c.email, c.state, c.vertical, c.vertical_custom]
           .some(f => f?.toLowerCase().includes(q))
       ) return false;
       return true;
@@ -66,7 +65,6 @@ export default function Clients() {
     <OpsShell>
       <MetricsBar prospects={prospects} clients={clients} />
 
-      {/* Header */}
       <div className="px-4 md:px-6 py-4" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <h1 className="font-display text-[24px] md:text-[28px] tracking-[0.02em] leading-none" style={{ color: "hsl(var(--foreground))" }}>Clients</h1>
         <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -74,7 +72,6 @@ export default function Clients() {
         </p>
       </div>
 
-      {/* Search + Filters */}
       <div className="px-4 md:px-6 py-3 flex flex-wrap gap-2 items-center" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <input
           type="text"
@@ -89,24 +86,9 @@ export default function Clients() {
             color: "hsl(var(--foreground))", outline: "none",
           }}
         />
-        <FilterSelect
-          value={filterStatus}
-          onChange={v => handleStatus(v as ClientStatus | "all")}
-          options={[("all" as const), ...STATUS_OPTIONS]}
-          label="Status"
-        />
-        <FilterSelect
-          value={filterTier}
-          onChange={v => handleTier(v as PricingTier | "all")}
-          options={[("all" as const), ...TIER_OPTIONS]}
-          label="Tier"
-        />
-        <FilterSelect
-          value={filterVertical}
-          onChange={v => handleVertical(v as IndustryVertical | "all")}
-          options={[("all" as const), ...VERTICAL_OPTIONS]}
-          label="Vertical"
-        />
+        <FilterSelect value={filterStatus} onChange={v => handleStatus(v as ClientStatus | "all")} options={[("all" as const), ...STATUS_OPTIONS]} label="Status" />
+        <FilterSelect value={filterTier} onChange={v => handleTier(v as PricingTier | "all")} options={[("all" as const), ...TIER_OPTIONS]} label="Tier" />
+        <FilterSelect value={filterVertical} onChange={v => handleVertical(v as IndustryVertical | "all")} options={[("all" as const), ...VERTICAL_OPTIONS]} label="Vertical" />
         {(search || filterStatus !== "all" || filterTier !== "all" || filterVertical !== "all") && (
           <button
             onClick={() => { setSearch(""); setFilterStatus("all"); setFilterTier("all"); setFilterVertical("all"); setPage(1); }}
@@ -118,7 +100,6 @@ export default function Clients() {
         )}
       </div>
 
-      {/* Results count */}
       <div className="px-4 md:px-6 pt-3 pb-1">
         <span className="font-mono text-[9px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
           {filtered.length} result{filtered.length !== 1 ? "s" : ""}
@@ -126,7 +107,6 @@ export default function Clients() {
         </span>
       </div>
 
-      {/* Loading / Error states */}
       {isLoading && (
         <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients…</div>
       )}
@@ -136,7 +116,6 @@ export default function Clients() {
         </div>
       )}
 
-      {/* Empty state */}
       {!isLoading && !isError && filtered.length === 0 && (
         <div className="mx-4 md:mx-6 my-6 p-10 text-center" style={{ border: "1px dashed hsl(var(--border))" }}>
           <div className="font-mono text-[10px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -145,7 +124,6 @@ export default function Clients() {
         </div>
       )}
 
-      {/* Client rows */}
       <div className="px-4 md:px-6 pb-3 space-y-1 mt-1">
         {paginated.map(c => (
           <div
@@ -156,7 +134,9 @@ export default function Clients() {
           >
             <div className="flex-1 min-w-0">
               <div className="font-body text-[13px] md:text-[14px] font-semibold truncate" style={{ color: "hsl(var(--foreground))" }}>{c.business_name}</div>
-              <div className="font-body text-[11px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{c.owner_name}{c.email ? ` · ${c.email}` : ""}</div>
+              <div className="font-body text-[11px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {c.owner_name}{c.email ? ` · ${c.email}` : ""}
+              </div>
             </div>
             <span className="font-mono text-[9px] tracking-[0.12em] uppercase px-2 py-1 flex-shrink-0" style={{ border: `1px solid ${statusColor(c.status)}`, color: statusColor(c.status) }}>{c.status}</span>
             <span className="hidden sm:inline font-mono text-[9px] tracking-[0.1em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{c.vertical}</span>
@@ -167,7 +147,6 @@ export default function Clients() {
         ))}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="px-4 md:px-6 py-4 flex items-center gap-2 justify-between" style={{ borderTop: "1px solid hsl(var(--border))" }}>
           <span className="font-mono text-[10px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -194,15 +173,14 @@ export default function Clients() {
         </div>
       )}
 
-      {/* Client detail panel */}
       {selectedClient && (
         <DrillDownPanel title={selectedClient.business_name} onClose={() => setSelectedClient(null)}>
           <div className="space-y-3">
             <DetailRow label="Owner" value={selectedClient.owner_name} />
             <DetailRow label="Email" value={selectedClient.email || "—"} />
-            <DetailRow label="Phone" value={selectedClient.phone || "—"} />
+            <DetailRow label="Phone" value={displayPhone(selectedClient.phone)} />
             <DetailRow label="State" value={selectedClient.state || "—"} />
-            <DetailRow label="Vertical" value={selectedClient.vertical} />
+            <DetailRow label="Vertical" value={selectedClient.vertical_custom || selectedClient.vertical} />
             <DetailRow label="Status">
               <span className="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-1" style={{ border: `1px solid ${statusColor(selectedClient.status)}`, color: statusColor(selectedClient.status) }}>
                 {selectedClient.status}

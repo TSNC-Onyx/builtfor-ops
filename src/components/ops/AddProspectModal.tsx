@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useAddProspect } from "@/hooks/useProspects";
+import { formatPhone } from "@/lib/utils";
 import type { IndustryVertical } from "@/types/pipeline";
 
 const VERTICALS: { value: IndustryVertical; label: string }[] = [
   { value: "landscaping", label: "Landscaping" },
-  { value: "hvac", label: "HVAC" },
-  { value: "plumbing", label: "Plumbing" },
-  { value: "electrical", label: "Electrical" },
-  { value: "pest_control", label: "Pest Control" },
-  { value: "cleaning", label: "Cleaning" },
-  { value: "other", label: "Other…" },
+  { value: "hvac",        label: "HVAC" },
+  { value: "plumbing",    label: "Plumbing" },
+  { value: "electrical",  label: "Electrical" },
+  { value: "pest_control",label: "Pest Control" },
+  { value: "cleaning",    label: "Cleaning" },
+  { value: "other",       label: "Other…" },
 ];
 
 export function AddProspectModal({ onClose }: { onClose: () => void }) {
@@ -29,6 +30,10 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
     padding: "8px 12px", border: "1px solid hsl(var(--border))",
     backgroundColor: "hsl(var(--surface-raised))", color: "hsl(var(--foreground))", outline: "none",
   };
+
+  function handlePhone(raw: string) {
+    set("phone", formatPhone(raw));
+  }
 
   function submit() {
     if (!form.full_name.trim() || !form.business_name.trim()) {
@@ -74,11 +79,11 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="px-6 py-5 space-y-3 max-h-[70vh] overflow-y-auto">
+          {/* Text fields — phone handled separately */}
           {([
-            { k: "full_name",        label: "Owner name",    placeholder: "First Last",         required: true },
-            { k: "business_name",    label: "Business name", placeholder: "Acme Landscaping",    required: true },
+            { k: "full_name",        label: "Owner name",    placeholder: "First Last",        required: true },
+            { k: "business_name",    label: "Business name", placeholder: "Acme Landscaping",   required: true },
             { k: "email",            label: "Email",         placeholder: "owner@company.com" },
-            { k: "phone",            label: "Phone",         placeholder: "(555) 000-0000" },
             { k: "state",            label: "State",         placeholder: "NC", maxLen: 2 },
             { k: "next_action",      label: "Next action",   placeholder: "Send intro email" },
             { k: "next_action_date", label: "Due date",      type: "date" },
@@ -98,19 +103,27 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
             </div>
           ))}
 
+          {/* Phone — auto-formatted */}
+          <div>
+            <label className="block font-mono text-[9px] tracking-[0.14em] uppercase mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Phone</label>
+            <input
+              type="tel"
+              placeholder="(555) 000-0000"
+              value={form.phone}
+              onChange={e => handlePhone(e.target.value)}
+              style={fieldStyle}
+            />
+          </div>
+
           {/* Vertical select */}
           <div>
             <label className="block font-mono text-[9px] tracking-[0.14em] uppercase mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Vertical *</label>
-            <select
-              value={form.vertical}
-              onChange={e => set("vertical", e.target.value)}
-              style={fieldStyle}
-            >
+            <select value={form.vertical} onChange={e => set("vertical", e.target.value)} style={fieldStyle}>
               {VERTICALS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>
           </div>
 
-          {/* Custom vertical — only shown when 'other' is selected */}
+          {/* Custom vertical */}
           {form.vertical === "other" && (
             <div>
               <label className="block font-mono text-[9px] tracking-[0.14em] uppercase mb-1" style={{ color: "hsl(var(--rust))" }}>Specify trade / industry *</label>
@@ -120,10 +133,7 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
                 value={form.vertical_custom}
                 onChange={e => set("vertical_custom", e.target.value)}
                 autoFocus
-                style={{
-                  ...fieldStyle,
-                  border: "1px solid hsl(var(--rust) / 0.5)",
-                }}
+                style={{ ...fieldStyle, border: "1px solid hsl(var(--rust) / 0.5)" }}
               />
             </div>
           )}
