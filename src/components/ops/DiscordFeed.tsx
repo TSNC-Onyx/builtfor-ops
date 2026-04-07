@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 
 const EDGE_URL =
   "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-messages";
-const POLL_INTERVAL = 15_000; // 15 seconds
+const POLL_INTERVAL = 15_000;
 
 interface Message {
   id: string;
@@ -27,7 +27,9 @@ function Avatar({ author, avatarUrl }: { author: string; avatarUrl: string | nul
         width={28}
         height={28}
         style={{ borderRadius: "50%", flexShrink: 0, display: "block" }}
-        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+        }}
       />
     );
   }
@@ -79,14 +81,13 @@ export function DiscordFeed() {
         prevIdRef.current = latestId;
       }
       setMessages(msgs);
-    } catch (e) {
+    } catch {
       setError("Could not load messages.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Initial fetch + poll
   useEffect(() => {
     if (!hasFetchedRef.current) {
       hasFetchedRef.current = true;
@@ -96,7 +97,6 @@ export function DiscordFeed() {
     return () => clearInterval(id);
   }, []);
 
-  // Clear badge + scroll to bottom when panel opens
   useEffect(() => {
     if (open) {
       setNewCount(0);
@@ -108,7 +108,6 @@ export function DiscordFeed() {
     }
   }, [open]);
 
-  // Auto-scroll to bottom when new messages arrive while panel is open
   useEffect(() => {
     if (open && scrollRef.current) {
       const el = scrollRef.current;
@@ -118,8 +117,8 @@ export function DiscordFeed() {
   }, [messages, open]);
 
   return (
-    <div className="hidden md:block">
-      {/* Sliding panel */}
+    <>
+      {/* Sliding panel — desktop only via inline media-style display */}
       <div
         aria-label="Discord live feed"
         aria-hidden={!open}
@@ -215,7 +214,12 @@ export function DiscordFeed() {
               }}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" />
+                <path
+                  d="M1 1l12 12M13 1L1 13"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="square"
+                />
               </svg>
             </button>
           </div>
@@ -292,7 +296,14 @@ export function DiscordFeed() {
             >
               <Avatar author={msg.author} avatarUrl={msg.avatarUrl} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "2px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: "6px",
+                    marginBottom: "2px",
+                  }}
+                >
                   <span
                     style={{
                       fontFamily: "'DM Sans', sans-serif",
@@ -330,7 +341,9 @@ export function DiscordFeed() {
                   }}
                 >
                   {msg.content || (
-                    <span style={{ opacity: 0.35, fontStyle: "italic" }}>[attachment]</span>
+                    <span style={{ opacity: 0.35, fontStyle: "italic" }}>
+                      [attachment]
+                    </span>
                   )}
                 </p>
               </div>
@@ -339,7 +352,7 @@ export function DiscordFeed() {
         </div>
       </div>
 
-      {/* Floating bubble */}
+      {/* Floating bubble — always rendered, position: fixed escapes all layout constraints */}
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close Discord feed" : "Open Discord feed"}
@@ -376,7 +389,6 @@ export function DiscordFeed() {
             fill="#5865F2"
           />
         </svg>
-        {/* Unread badge */}
         {newCount > 0 && !open && (
           <span
             style={{
@@ -401,6 +413,6 @@ export function DiscordFeed() {
           </span>
         )}
       </button>
-    </div>
+    </>
   );
 }
