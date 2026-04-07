@@ -32,23 +32,29 @@ export function ProspectCard({
         opacity: isDragging ? 0.5 : 1,
       }}
     >
+      {/* Business name — semibold, full foreground */}
       <div className="font-body text-[13px] font-semibold leading-tight mb-0.5 truncate" style={{ color: "hsl(var(--foreground))" }}>
         {prospect.business_name}
       </div>
-      <div className="font-body text-[11px] mb-2 truncate" style={{ color: "hsl(var(--muted-foreground))" }}>
+
+      {/* Owner name — bumped to 12px at full foreground weight 400 to clear WCAG AA (was 11px muted ≈3.6:1) */}
+      <div className="font-body text-[12px] mb-2 truncate" style={{ color: "hsl(var(--foreground))", fontWeight: 400 }}>
         {prospect.full_name}
       </div>
+
+      {/* Tag pills — bumped to 10px (was 9px, below mobile legibility floor); tracking tightened to offset size increase */}
       <div className="flex items-center gap-1 flex-wrap mb-1.5">
         {[prospect.source, prospect.state, verticalDisplay].filter(Boolean).map((tag, i) => (
           <span
             key={i}
-            className="font-mono text-[9px] tracking-[0.1em] uppercase px-1.5 py-0.5"
+            className="font-mono text-[10px] tracking-[0.08em] uppercase px-1.5 py-0.5"
             style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
           >
             {tag}
           </span>
         ))}
       </div>
+
       {prospect.next_action && (
         <div
           className="font-body text-[11px] leading-tight truncate"
@@ -60,6 +66,7 @@ export function ProspectCard({
           )}
         </div>
       )}
+
       <div
         className="font-mono text-[9px] tracking-[0.08em] uppercase mt-1.5"
         style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}
