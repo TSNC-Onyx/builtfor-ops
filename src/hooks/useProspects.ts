@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
-import type { Prospect, ProspectStage, Client } from "@/types/pipeline";
+import type { Prospect, ProspectStage } from "@/types/pipeline";
 
 export function useProspects() {
   return useQuery({
@@ -53,17 +53,6 @@ export function useAddProspect() {
       toast.success("Prospect added.");
     },
     onError: (err: Error) => toast.error(`Add failed: ${err.message}`),
-  });
-}
-
-export function useClients() {
-  return useQuery({
-    queryKey: ["clients"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("clients").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as Client[];
-    },
   });
 }
 
