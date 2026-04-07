@@ -12,9 +12,23 @@ import Clients from "./pages/Clients";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Keep data fresh for 60s — prevents unnecessary refetches on focus/mount
+      staleTime: 60_000,
+      // Retain cached data for 5 minutes after a component unmounts
+      gcTime: 5 * 60_000,
+      // Do not retry on auth errors (403/401) — surface them immediately
+      retry: (failureCount, error: unknown) => {
+        const msg = error instanceof Error ? error.message : "";
+        if (msg.includes("JWT") || msg.includes("not authenticated")) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
 
-// Bolt.new has no env vars — skip auth entirely in preview.
 const SUPABASE_CONFIGURED =
   !!import.meta.env.VITE_SUPABASE_URL &&
   import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
@@ -26,15 +40,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
+
+    // Resolve initial session synchronously before rendering routes
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      queryClient.clear();
+      // Only clear cached data when the user actually signs out.
+      // TOKEN_REFRESHED and INITIAL_SESSION fire on every page load/refresh
+      // and must NOT wipe the cache — doing so causes the empty-data flash.
+      if (event === "SIGNED_OUT") {
+        queryClient.clear();
+      }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
-  // Session resolving — show a brief branded loading state rather than null
   if (session === undefined) {
     return (
       <div
