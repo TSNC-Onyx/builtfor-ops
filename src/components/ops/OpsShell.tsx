@@ -1,7 +1,6 @@
 import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
-import { DiscordFeed } from "./DiscordFeed";
 import { useTheme } from "@/hooks/useTheme";
 import { useProfile, formatDisplayName } from "@/hooks/useProfile";
 
@@ -18,10 +17,8 @@ export function OpsShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const logoStroke = theme === "dark" ? "hsl(38,33%,92%)" : "hsl(213,58%,27%)";
 
-  // Close drawer on route change
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
-  // Lock body scroll when drawer open
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -32,33 +29,26 @@ export function OpsShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: "hsl(var(--background))" }}>
-      {/* Sticky header */}
       <header
         className="h-14 flex items-center px-4 gap-4 sticky top-0 z-40"
         style={{ backgroundColor: "hsl(var(--nav-bg))", borderBottom: "1px solid hsl(var(--nav-border))" }}
       >
-        {/* Hamburger — mobile only */}
         <button
           className="md:hidden flex flex-col justify-center gap-[5px] w-8 h-8 flex-shrink-0"
           onClick={() => setDrawerOpen(o => !o)}
           aria-label="Open navigation"
         >
           {[0, 1, 2].map(i => (
-            <span
-              key={i}
-              className="block h-[2px] w-5 transition-all duration-200"
-              style={{
-                backgroundColor: "hsl(var(--nav-text))",
-                transform: drawerOpen
-                  ? i === 0 ? "translateY(7px) rotate(45deg)" : i === 2 ? "translateY(-7px) rotate(-45deg)" : "scaleX(0)"
-                  : "none",
-                opacity: drawerOpen && i === 1 ? 0 : 1,
-              }}
-            />
+            <span key={i} className="block h-[2px] w-5 transition-all duration-200" style={{
+              backgroundColor: "hsl(var(--nav-text))",
+              transform: drawerOpen
+                ? i === 0 ? "translateY(7px) rotate(45deg)" : i === 2 ? "translateY(-7px) rotate(-45deg)" : "scaleX(0)"
+                : "none",
+              opacity: drawerOpen && i === 1 ? 0 : 1,
+            }} />
           ))}
         </button>
 
-        {/* Logo */}
         <div className="flex items-center gap-2.5">
           <svg className="w-7 h-7 flex-shrink-0" viewBox="0 0 38 38" fill="none">
             <rect x="4" y="12" width="30" height="22" rx="0" fill="none" stroke={logoStroke} strokeWidth="2.2" />
@@ -68,7 +58,6 @@ export function OpsShell({ children }: { children: ReactNode }) {
           <span className="font-display text-[18px] tracking-[0.04em] hidden sm:inline" style={{ color: "hsl(var(--nav-text))" }}>BuiltFor Ops</span>
         </div>
 
-        {/* Desktop nav */}
         <nav className="hidden md:flex gap-1 flex-1">
           {NAV.map(n => (
             <Link key={n.to} to={n.to}
@@ -81,22 +70,14 @@ export function OpsShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        {/* Desktop right — user identity + theme toggle */}
         <div className="ml-auto flex items-center gap-4">
-          {/* User identity — desktop only, subtle */}
           {displayName && (
             <div className="hidden md:flex flex-col items-end gap-0">
-              <span
-                className="font-body text-[12px] leading-tight"
-                style={{ color: "hsl(var(--nav-text-muted))", fontWeight: 500 }}
-              >
+              <span className="font-body text-[12px] leading-tight" style={{ color: "hsl(var(--nav-text-muted))", fontWeight: 500 }}>
                 {displayName}
               </span>
               {role && (
-                <span
-                  className="font-mono text-[9px] tracking-[0.12em] uppercase leading-tight"
-                  style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.65 }}
-                >
+                <span className="font-mono text-[9px] tracking-[0.12em] uppercase leading-tight" style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.65 }}>
                   {role}
                 </span>
               )}
@@ -106,27 +87,17 @@ export function OpsShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      {/* Mobile drawer overlay */}
       {drawerOpen && (
-        <div
-          className="fixed inset-0 z-50 md:hidden"
-          style={{ backgroundColor: "rgba(10,20,40,0.5)" }}
-          onClick={() => setDrawerOpen(false)}
-        />
+        <div className="fixed inset-0 z-50 md:hidden" style={{ backgroundColor: "rgba(10,20,40,0.5)" }} onClick={() => setDrawerOpen(false)} />
       )}
 
-      {/* Mobile drawer panel */}
-      <div
-        className="fixed top-0 left-0 h-full z-50 md:hidden flex flex-col"
-        style={{
-          width: "240px",
-          backgroundColor: "hsl(var(--nav-bg))",
-          borderRight: "1px solid hsl(var(--nav-border))",
-          transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform 0.22s cubic-bezier(0.4,0,0.2,1)",
-        }}
-      >
-        {/* Drawer header */}
+      <div className="fixed top-0 left-0 h-full z-50 md:hidden flex flex-col" style={{
+        width: "240px",
+        backgroundColor: "hsl(var(--nav-bg))",
+        borderRight: "1px solid hsl(var(--nav-border))",
+        transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
+        transition: "transform 0.22s cubic-bezier(0.4,0,0.2,1)",
+      }}>
         <div className="h-14 flex items-center px-5 gap-2.5 flex-shrink-0" style={{ borderBottom: "1px solid hsl(var(--nav-border))" }}>
           <svg className="w-7 h-7 flex-shrink-0" viewBox="0 0 38 38" fill="none">
             <rect x="4" y="12" width="30" height="22" rx="0" fill="none" stroke={logoStroke} strokeWidth="2.2" />
@@ -135,8 +106,6 @@ export function OpsShell({ children }: { children: ReactNode }) {
           </svg>
           <span className="font-display text-[18px] tracking-[0.04em]" style={{ color: "hsl(var(--nav-text))" }}>BuiltFor Ops</span>
         </div>
-
-        {/* Nav links — scrollable middle section */}
         <nav className="flex flex-col gap-1 p-3 flex-1 overflow-y-auto">
           {NAV.map(n => (
             <Link key={n.to} to={n.to}
@@ -148,29 +117,13 @@ export function OpsShell({ children }: { children: ReactNode }) {
             >{n.label}</Link>
           ))}
         </nav>
-
-        {/* User identity footer — always visible, pinned to drawer bottom */}
-        <div
-          className="flex-shrink-0 px-5 py-4"
-          style={{ borderTop: "1px solid hsl(var(--nav-border))" }}
-        >
+        <div className="flex-shrink-0 px-5 py-4" style={{ borderTop: "1px solid hsl(var(--nav-border))" }}>
           {profile ? (
             <>
-              <div
-                className="font-body text-[13px] leading-tight"
-                style={{ color: "hsl(var(--nav-text))", fontWeight: 500 }}
-              >
-                {profile.full_name}
-              </div>
-              <div
-                className="font-mono text-[9px] tracking-[0.12em] uppercase mt-0.5"
-                style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.7 }}
-              >
-                {profile.role}
-              </div>
+              <div className="font-body text-[13px] leading-tight" style={{ color: "hsl(var(--nav-text))", fontWeight: 500 }}>{profile.full_name}</div>
+              <div className="font-mono text-[9px] tracking-[0.12em] uppercase mt-0.5" style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.7 }}>{profile.role}</div>
             </>
           ) : (
-            // Placeholder skeleton when profile hasn't loaded yet
             <>
               <div className="h-3 w-28 animate-pulse" style={{ backgroundColor: "hsl(var(--nav-border))" }} />
               <div className="h-2 w-16 mt-1.5 animate-pulse" style={{ backgroundColor: "hsl(var(--nav-border))" }} />
@@ -180,9 +133,6 @@ export function OpsShell({ children }: { children: ReactNode }) {
       </div>
 
       <main className="flex-1 min-w-0">{children}</main>
-
-      {/* Discord live feed — desktop floating bubble + slide panel */}
-      <DiscordFeed />
     </div>
   );
 }

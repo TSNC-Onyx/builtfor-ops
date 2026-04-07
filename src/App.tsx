@@ -11,15 +11,13 @@ import Pipeline from "./pages/Pipeline";
 import Clients from "./pages/Clients";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import { DiscordFeed } from "./components/ops/DiscordFeed";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Keep data fresh for 60s — prevents unnecessary refetches on focus/mount
       staleTime: 60_000,
-      // Retain cached data for 5 minutes after a component unmounts
       gcTime: 5 * 60_000,
-      // Do not retry on auth errors (403/401) — surface them immediately
       retry: (failureCount, error: unknown) => {
         const msg = error instanceof Error ? error.message : "";
         if (msg.includes("JWT") || msg.includes("not authenticated")) return false;
@@ -40,42 +38,31 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
-
-    // Resolve initial session synchronously before rendering routes
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s);
-      // Only clear cached data when the user actually signs out.
-      // TOKEN_REFRESHED and INITIAL_SESSION fire on every page load/refresh
-      // and must NOT wipe the cache — doing so causes the empty-data flash.
-      if (event === "SIGNED_OUT") {
-        queryClient.clear();
-      }
+      if (event === "SIGNED_OUT") queryClient.clear();
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
   if (session === undefined) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: "hsl(var(--background))" }}
-      >
-        <span
-          className="font-mono text-[10px] tracking-[0.18em] uppercase animate-pulse"
-          style={{ color: "hsl(var(--muted-foreground))" }}
-        >
-          Loading…
-        </span>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "hsl(var(--background))" }}>
+        <span className="font-mono text-[10px] tracking-[0.18em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading…</span>
       </div>
     );
   }
 
   if (!session && SUPABASE_CONFIGURED) return <Login />;
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {/* DiscordFeed mounted here — outside routing tree, outside all stacking contexts */}
+      <DiscordFeed />
+    </>
+  );
 }
 
 const App = () => (
