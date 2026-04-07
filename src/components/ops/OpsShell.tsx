@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { useTheme } from "@/hooks/useTheme";
 import { useProfile, formatDisplayName } from "@/hooks/useProfile";
+import { supabase } from "@/lib/supabase";
 
 const NAV = [
   { to: "/", label: "Dashboard" },
@@ -23,6 +24,12 @@ export function OpsShell({ children }: { children: ReactNode }) {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
   }, [drawerOpen]);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    // onAuthStateChange SIGNED_OUT handler in App.tsx clears the cache
+    // and session state, which triggers redirect to Login automatically
+  }
 
   const displayName = profile ? formatDisplayName(profile.full_name) : null;
   const role = profile?.role ?? null;
@@ -70,7 +77,8 @@ export function OpsShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-3">
+          {/* User identity — desktop only */}
           {displayName && (
             <div className="hidden md:flex flex-col items-end gap-0">
               <span className="font-body text-[12px] leading-tight" style={{ color: "hsl(var(--nav-text-muted))", fontWeight: 500 }}>
@@ -83,7 +91,38 @@ export function OpsShell({ children }: { children: ReactNode }) {
               )}
             </div>
           )}
+
           <ThemeToggle />
+
+          {/* Logout — subtle, icon-only with tooltip label */}
+          <button
+            onClick={handleLogout}
+            aria-label="Sign out"
+            title="Sign out"
+            style={{
+              width: "28px",
+              height: "28px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              color: "hsl(var(--nav-text-muted))",
+              opacity: 0.55,
+              transition: "opacity 0.15s ease",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+            onMouseLeave={e => (e.currentTarget.style.opacity = "0.55")}
+          >
+            {/* Exit arrow icon */}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -117,6 +156,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
             >{n.label}</Link>
           ))}
         </nav>
+        {/* Mobile drawer footer — user identity + sign out */}
         <div className="flex-shrink-0 px-5 py-4" style={{ borderTop: "1px solid hsl(var(--nav-border))" }}>
           {profile ? (
             <>
@@ -129,6 +169,28 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <div className="h-2 w-16 mt-1.5 animate-pulse" style={{ backgroundColor: "hsl(var(--nav-border))" }} />
             </>
           )}
+          <button
+            onClick={handleLogout}
+            style={{
+              marginTop: "12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              color: "hsl(var(--nav-text-muted))",
+              opacity: 0.6,
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span className="font-mono text-[9px] tracking-[0.12em] uppercase">Sign out</span>
+          </button>
         </div>
       </div>
 
