@@ -5,7 +5,7 @@ export type ProspectStage =
   | "design_partner" | "closed_won" | "closed_lost";
 
 export type IndustryVertical =
-  | "landscaping" | "hvac" | "plumbing" | "electrical" | "pest_control" | "cleaning";
+  | "landscaping" | "hvac" | "plumbing" | "electrical" | "pest_control" | "cleaning" | "other";
 
 export type ClientStatus = "onboarding" | "active" | "at_risk" | "churned" | "paused";
 export type PricingTier = "founding" | "standard";
@@ -17,6 +17,7 @@ export interface Prospect {
   email: string | null;
   phone: string | null;
   vertical: IndustryVertical;
+  vertical_custom: string | null;
   stage: ProspectStage;
   state: string | null;
   source: string | null;
@@ -37,6 +38,7 @@ export interface Client {
   email: string;
   phone: string | null;
   vertical: IndustryVertical;
+  vertical_custom: string | null;
   state: string | null;
   status: ClientStatus;
   pricing_tier: PricingTier;
@@ -71,3 +73,9 @@ export const SOURCE_LABELS: Record<string, string> = {
 };
 
 export const FOUNDING_SPOTS = 5;
+
+/** Returns the display label for a vertical, using custom text when vertical = 'other' */
+export function verticalLabel(vertical: IndustryVertical, custom: string | null | undefined): string {
+  if (vertical === "other") return custom?.trim() || "Other";
+  return vertical.replace("_", " ");
+}

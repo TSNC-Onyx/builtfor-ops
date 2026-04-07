@@ -1,8 +1,18 @@
 import { useState, useEffect } from "react";
-import type { Prospect, ProspectStage } from "@/types/pipeline";
+import type { Prospect, ProspectStage, IndustryVertical } from "@/types/pipeline";
 import { STAGE_LABELS, STAGE_ORDER, SOURCE_LABELS } from "@/types/pipeline";
 import { useUpdateProspect, useConvertToClient, useProspects } from "@/hooks/useProspects";
 import { formatDate } from "@/lib/utils";
+
+const VERTICALS: { value: IndustryVertical; label: string }[] = [
+  { value: "landscaping", label: "Landscaping" },
+  { value: "hvac",        label: "HVAC" },
+  { value: "plumbing",    label: "Plumbing" },
+  { value: "electrical",  label: "Electrical" },
+  { value: "pest_control",label: "Pest Control" },
+  { value: "cleaning",    label: "Cleaning" },
+  { value: "other",       label: "Other…" },
+];
 
 const fieldStyle: React.CSSProperties = {
   width: "100%", fontFamily: "'DM Sans', sans-serif", fontSize: "13px",
@@ -22,7 +32,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function ProspectDetail({ prospectId, onClose }: { prospectId: string; onClose: () => void }) {
-  // Derive live prospect from query cache so detail panel always reflects current state.
   const { data: prospects = [] } = useProspects();
   const prospect = prospects.find(p => p.id === prospectId);
 
@@ -31,12 +40,10 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
   const update = useUpdateProspect();
   const convert = useConvertToClient();
 
-  // Reset form when live prospect data changes (after save invalidation).
   useEffect(() => {
     if (prospect) { setForm(prospect); setDirty(false); }
   }, [prospect]);
 
-  // If the prospect was deleted or converted and no longer exists, close the panel.
   useEffect(() => {
     if (prospects.length > 0 && !prospect) onClose();
   }, [prospect, prospects.length]);
@@ -48,6 +55,16 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
     setDirty(true);
   }
 
+  // When vertical changes away from 'other', clear the custom label
+  function handleVerticalChange(v: IndustryVertical) {
+    setForm(f => ({
+      ...f,
+      vertical: v,
+      vertical_custom: v === "other" ? (f.vertical_custom ?? "") : null,
+    }));
+    setDirty(true);
+  }
+
   function save() {
     update.mutate({ id: prospect!.id, updates: form }, {
       onSuccess: () => setDirty(false),
@@ -56,10 +73,11 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
 
   function handleConvert() {
     if (confirm(`Convert ${prospect!.business_name} to a client?`)) {
-      // Use live prospect from cache — not stale local form state.
       convert.mutate(prospect!, { onSuccess: onClose });
     }
   }
+
+  const showCustom = (form.vertical ?? prospect.vertical) === "other";
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: "hsl(var(--surface))", borderLeft: "1px solid hsl(var(--border))" }}>
@@ -70,12 +88,42 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
         </div>
         <button onClick={onClose} className="text-lg leading-none" style={{ color: "hsl(var(--muted-foreground))" }}>✕</button>
       </div>
+
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
         <Field label="Stage">
           <select value={form.stage ?? prospect.stage} onChange={e => set("stage", e.target.value as ProspectStage)} style={fieldStyle}>
             {STAGE_ORDER.map(s => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
           </select>
         </Field>
+
+        {/* Vertical */}
+        <Field label="Vertical">
+          <select
+            value={form.vertical ?? prospect.vertical}
+            onChange={e => handleVerticalChange(e.target.value as IndustryVertical)}
+            style={fieldStyle}
+          >
+            {VERTICALS.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
+          </select>
+        </Field>
+
+        {/* Custom vertical — only shown when 'other' selected */}
+        {showCustom && (
+          <Field label="Specify trade / industry *">
+            <input
+              type="text"
+              placeholder="e.g. Tree service, Irrigation…"
+              value={form.vertical_custom ?? ""}
+              onChange={e => set("vertical_custom", e.target.value)}
+              autoFocus
+              style={{
+                ...fieldStyle,
+                border: "1px solid hsl(var(--rust) / 0.5)",
+              }}
+            />
+          </Field>
+        )}
+
         <Field label="Email"><input value={form.email ?? ""} onChange={e => set("email", e.target.value)} style={fieldStyle} /></Field>
         <Field label="Phone"><input value={form.phone ?? ""} onChange={e => set("phone", e.target.value)} style={fieldStyle} /></Field>
         <Field label="State"><input maxLength={2} value={form.state ?? ""} onChange={e => set("state", e.target.value as any)} style={fieldStyle} placeholder="NC" /></Field>
@@ -96,6 +144,7 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
           <div className="font-mono text-[9px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>Updated {formatDate(prospect.updated_at)}</div>
         </div>
       </div>
+
       <div className="px-6 py-4 flex gap-2" style={{ borderTop: "1px solid hsl(var(--border))" }}>
         {dirty && (
           <button
