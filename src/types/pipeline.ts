@@ -77,14 +77,20 @@ export const SOURCE_LABELS: Record<string, string> = {
 export const TIER_LABELS: Record<PricingTier, string> = {
   founding: "Founding Member",
   standard: "Standard Member",
-  tlcc: "TLCC Member",
+  tlcc:     "TLCC Member",
 };
+
+/**
+ * Canonical ordered list of all pricing tiers.
+ * Single source of truth for dropdowns and selects across the ops portal.
+ */
+export const TIER_OPTIONS: PricingTier[] = ["founding", "standard", "tlcc"];
 
 /** Maps pricing tier to its app_config key for payment link resolution */
 export const TIER_CONFIG_KEY: Record<PricingTier, string> = {
   founding: "stripe_payment_link_founding",
   standard: "stripe_payment_link_standard",
-  tlcc: "stripe_payment_link_tlcc",
+  tlcc:     "stripe_payment_link_tlcc",
 };
 
 export const FOUNDING_SPOTS = 5;

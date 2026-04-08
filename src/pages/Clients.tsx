@@ -6,7 +6,7 @@ import { useProspects } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
 import { formatDate, displayPhone } from "@/lib/utils";
 import type { Client, ClientStatus, PricingTier, IndustryVertical } from "@/types/pipeline";
-import { verticalLabel, TIER_LABELS } from "@/types/pipeline";
+import { verticalLabel, TIER_LABELS, TIER_OPTIONS } from "@/types/pipeline";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 import { buildSetupFeePaymentLink } from "@/lib/stripe.service";
 import { setupFeeCents, formatCents } from "@/types/billing";
@@ -14,7 +14,6 @@ import { setupFeeCents, formatCents } from "@/types/billing";
 const PAGE_SIZE = 15;
 
 const STATUS_OPTIONS: ClientStatus[] = ["onboarding", "active", "at_risk", "churned", "paused"];
-const TIER_OPTIONS: PricingTier[] = ["founding", "standard", "tlcc"];
 const VERTICAL_OPTIONS: IndustryVertical[] = ["landscaping", "hvac", "plumbing", "electrical", "pest_control", "cleaning", "other"];
 
 const RUST  = "hsl(20,63%,47%)";
@@ -31,35 +30,44 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const HEALTH_COLOR: Record<string, string> = {
-  healthy:          GREEN,
-  needs_attention:  "hsl(38,90%,50%)",
-  at_risk:          RUST,
-  critical:         "hsl(0,72%,50%)",
+  healthy:         GREEN,
+  needs_attention: "hsl(38,90%,50%)",
+  at_risk:         RUST,
+  critical:        "hsl(0,72%,50%)",
 };
 
 function statusColor(s: string): string { return STATUS_COLOR[s] ?? STEEL; }
 function healthColor(s: string): string { return HEALTH_COLOR[s] ?? STEEL; }
-function formatEnum(s: string): string { return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
+function formatEnum(s: string): string  { return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
 
 export default function Clients() {
   const { data: clients = [], isLoading, isError } = useClients();
   const { data: prospects = [] } = useProspects();
-  const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<ClientStatus | "all">("all");
-  const [filterTier, setFilterTier] = useState<PricingTier | "all">("all");
+  const [search, setSearch]               = useState("");
+  const [filterStatus, setFilterStatus]   = useState<ClientStatus | "all">("all");
+  const [filterTier, setFilterTier]       = useState<PricingTier | "all">("all");
   const [filterVertical, setFilterVertical] = useState<IndustryVertical | "all">("all");
-  const [page, setPage] = useState(1);
+  const [page, setPage]                   = useState(1);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  const [linkLoading, setLinkLoading] = useState(false);
+  // selectedTier: the tier the operator has chosen for link generation.
+  // Defaults to the client's own pricing_tier when a client is opened.
+  const [selectedTier, setSelectedTier]   = useState<PricingTier | null>(null);
+  const [linkLoading, setLinkLoading]     = useState(false);
 
   const resetPage = () => setPage(1);
+
+  // When opening a client, seed the tier selector to their stored tier
+  function openClient(c: Client) {
+    setSelectedClient(c);
+    setSelectedTier(c.pricing_tier);
+  }
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return clients.filter(c => {
-      if (filterStatus !== "all" && c.status !== filterStatus) return false;
-      if (filterTier !== "all" && c.pricing_tier !== filterTier) return false;
-      if (filterVertical !== "all" && c.vertical !== filterVertical) return false;
+      if (filterStatus   !== "all" && c.status       !== filterStatus)   return false;
+      if (filterTier     !== "all" && c.pricing_tier !== filterTier)     return false;
+      if (filterVertical !== "all" && c.vertical     !== filterVertical) return false;
       if (q && ![c.business_name, c.owner_name, c.email, c.state, c.vertical, c.vertical_custom]
         .some(f => f?.toLowerCase().includes(q))) return false;
       return true;
@@ -67,8 +75,8 @@ export default function Clients() {
   }, [clients, search, filterStatus, filterTier, filterVertical]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safeP = Math.min(page, totalPages);
-  const paginated = filtered.slice((safeP - 1) * PAGE_SIZE, safeP * PAGE_SIZE);
+  const safeP      = Math.min(page, totalPages);
+  const paginated  = filtered.slice((safeP - 1) * PAGE_SIZE, safeP * PAGE_SIZE);
 
   const mrr = clients.reduce((sum, c) => {
     if (c.status === "churned" || c.status === "paused") return sum;
@@ -80,18 +88,23 @@ export default function Clients() {
     return `$${c.pricing_tier === "standard" ? 400 : 300}/mo`;
   }
 
-  async function handleCopyLink(c: Client) {
+  // Resolve link for the currently selected tier override
+  async function resolveLink(c: Client, tier: PricingTier): Promise<string> {
+    return buildSetupFeePaymentLink({
+      client_id:     c.id,
+      business_name: c.business_name,
+      email:         c.email,
+      amount_cents:  setupFeeCents(tier),
+      pricing_tier:  tier,
+    });
+  }
+
+  async function handleCopyLink(c: Client, tier: PricingTier) {
     setLinkLoading(true);
     try {
-      const url = await buildSetupFeePaymentLink({
-        client_id: c.id,
-        business_name: c.business_name,
-        email: c.email,
-        amount_cents: setupFeeCents(c.pricing_tier),
-        pricing_tier: c.pricing_tier,
-      });
+      const url = await resolveLink(c, tier);
       await navigator.clipboard.writeText(url);
-      toast.success(`Payment link copied — ${TIER_LABELS[c.pricing_tier]}`);
+      toast.success(`Payment link copied — ${TIER_LABELS[tier]}`);
     } catch {
       toast.error("Failed to copy link — check connection and retry.");
     } finally {
@@ -99,16 +112,10 @@ export default function Clients() {
     }
   }
 
-  async function handleOpenLink(c: Client) {
+  async function handleOpenLink(c: Client, tier: PricingTier) {
     setLinkLoading(true);
     try {
-      const url = await buildSetupFeePaymentLink({
-        client_id: c.id,
-        business_name: c.business_name,
-        email: c.email,
-        amount_cents: setupFeeCents(c.pricing_tier),
-        pricing_tier: c.pricing_tier,
-      });
+      const url = await resolveLink(c, tier);
       window.open(url, "_blank");
     } catch {
       toast.error("Failed to open link — check connection and retry.");
@@ -116,6 +123,9 @@ export default function Clients() {
       setLinkLoading(false);
     }
   }
+
+  // Active tier for the open panel — falls back to client's own tier
+  const activeTier: PricingTier = selectedTier ?? selectedClient?.pricing_tier ?? "standard";
 
   return (
     <OpsShell>
@@ -141,8 +151,8 @@ export default function Clients() {
             color: "hsl(var(--foreground))", outline: "none",
           }}
         />
-        <FilterSelect value={filterStatus} onChange={v => { setFilterStatus(v as ClientStatus | "all"); resetPage(); }} options={[("all" as const), ...STATUS_OPTIONS]} label="Status" />
-        <FilterSelect value={filterTier}   onChange={v => { setFilterTier(v as PricingTier | "all"); resetPage(); }}   options={[("all" as const), ...TIER_OPTIONS]}   label="Tier" />
+        <FilterSelect value={filterStatus}   onChange={v => { setFilterStatus(v as ClientStatus | "all");     resetPage(); }} options={[("all" as const), ...STATUS_OPTIONS]}   label="Status" />
+        <FilterSelect value={filterTier}     onChange={v => { setFilterTier(v as PricingTier | "all");         resetPage(); }} options={[("all" as const), ...TIER_OPTIONS]}     label="Tier" />
         <FilterSelect value={filterVertical} onChange={v => { setFilterVertical(v as IndustryVertical | "all"); resetPage(); }} options={[("all" as const), ...VERTICAL_OPTIONS]} label="Vertical" />
         {(search || filterStatus !== "all" || filterTier !== "all" || filterVertical !== "all") && (
           <button
@@ -161,7 +171,7 @@ export default function Clients() {
       </div>
 
       {isLoading && <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients…</div>}
-      {isError  && <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>Failed to load clients — check connection and refresh.</div>}
+      {isError   && <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>Failed to load clients — check connection and refresh.</div>}
 
       {!isLoading && !isError && filtered.length === 0 && (
         <div className="mx-4 md:mx-6 my-6 p-10 text-center" style={{ border: "1px dashed hsl(var(--border))" }}>
@@ -174,7 +184,7 @@ export default function Clients() {
       {/* Client rows */}
       <div className="px-4 md:px-6 pb-3 space-y-1 mt-1">
         {paginated.map(c => (
-          <div key={c.id} onClick={() => setSelectedClient(c)}
+          <div key={c.id} onClick={() => openClient(c)}
             className="flex items-center gap-3 md:gap-5 px-4 py-3 cursor-pointer transition-opacity active:opacity-70 hover:opacity-80"
             style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}
           >
@@ -199,7 +209,7 @@ export default function Clients() {
             Page {safeP} of {totalPages} · {filtered.length} results
           </span>
           <div className="flex gap-1">
-            <PagBtn label="‹" disabled={safeP === 1} onClick={() => setPage(p => Math.max(1, p - 1))} />
+            <PagBtn label="‹" disabled={safeP === 1}          onClick={() => setPage(p => Math.max(1, p - 1))} />
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter(n => n === 1 || n === totalPages || Math.abs(n - safeP) <= 1)
               .reduce<(number | "...")[]>((acc, n, i, arr) => {
@@ -218,18 +228,50 @@ export default function Clients() {
 
       {/* Client detail panel */}
       {selectedClient && (
-        <DrillDownPanel title={selectedClient.business_name} onClose={() => setSelectedClient(null)}>
+        <DrillDownPanel title={selectedClient.business_name} onClose={() => { setSelectedClient(null); setSelectedTier(null); }}>
           <div className="space-y-4">
 
-            {/* ── PAYMENT LINK ── prominent, top of panel */}
+            {/* ── SETUP FEE PAYMENT LINK ── */}
             <div style={{ backgroundColor: `${NAVY}12`, border: `1px solid ${NAVY}33`, padding: "14px 16px" }}>
-              <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Setup Fee Payment Link</div>
-              <div className="font-body text-[13px] font-semibold mb-3" style={{ color: "hsl(var(--foreground))" }}>
-                {TIER_LABELS[selectedClient.pricing_tier]} — {formatCents(setupFeeCents(selectedClient.pricing_tier))}
+              <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Setup Fee Payment Link</div>
+
+              {/* Tier selector dropdown */}
+              <div className="mb-3">
+                <label className="font-mono text-[9px] tracking-[0.12em] uppercase block mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Select link type</label>
+                <select
+                  value={activeTier}
+                  onChange={e => setSelectedTier(e.target.value as PricingTier)}
+                  style={{
+                    fontFamily: "'DM Mono', monospace",
+                    fontSize: "11px",
+                    letterSpacing: "0.06em",
+                    padding: "7px 10px",
+                    width: "100%",
+                    border: `1px solid ${NAVY}66`,
+                    backgroundColor: "hsl(var(--surface-raised))",
+                    color: "hsl(var(--foreground))",
+                    outline: "none",
+                  }}
+                >
+                  {TIER_OPTIONS.map(t => (
+                    <option key={t} value={t}>
+                      {TIER_LABELS[t]} — {formatCents(setupFeeCents(t))}
+                    </option>
+                  ))}
+                </select>
               </div>
+
+              {/* Indicator if selected tier differs from client's stored tier */}
+              {activeTier !== selectedClient.pricing_tier && (
+                <div className="font-mono text-[9px] tracking-[0.08em] mb-2" style={{ color: RUST }}>
+                  ⚠ Override active — client tier is {TIER_LABELS[selectedClient.pricing_tier]}
+                </div>
+              )}
+
+              {/* Actions */}
               <div className="flex gap-2 flex-wrap">
                 <button
-                  onClick={() => handleCopyLink(selectedClient)}
+                  onClick={() => handleCopyLink(selectedClient, activeTier)}
                   disabled={linkLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ backgroundColor: NAVY, color: "hsl(38,33%,92%)", border: "none", cursor: linkLoading ? "not-allowed" : "pointer" }}
@@ -237,7 +279,7 @@ export default function Clients() {
                   {linkLoading ? "Loading…" : "Copy Link"}
                 </button>
                 <button
-                  onClick={() => handleOpenLink(selectedClient)}
+                  onClick={() => handleOpenLink(selectedClient, activeTier)}
                   disabled={linkLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ border: `1px solid ${RUST}`, color: RUST, background: "none", cursor: linkLoading ? "not-allowed" : "pointer" }}
@@ -263,9 +305,9 @@ export default function Clients() {
                   {formatEnum(selectedClient.health_signal || "healthy")}
                 </span>
               </DetailRow>
-              <DetailRow label="MRR" value={clientMrr(selectedClient)} />
+              <DetailRow label="MRR"      value={clientMrr(selectedClient)} />
               <DetailRow label="Vertical" value={verticalLabel(selectedClient.vertical, selectedClient.vertical_custom)} />
-              <DetailRow label="Tier" value={TIER_LABELS[selectedClient.pricing_tier]} />
+              <DetailRow label="Tier"     value={TIER_LABELS[selectedClient.pricing_tier]} />
             </div>
 
             {/* ── CONTACT DETAILS ── */}
@@ -287,10 +329,11 @@ export default function Clients() {
                   </a>
                 ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>—</span>}
               </DetailRow>
-              <DetailRow label="State" value={selectedClient.state || "—"} />
+              <DetailRow label="State"   value={selectedClient.state || "—"} />
               <DetailRow label="Started" value={formatDate(selectedClient.created_at)} />
               {selectedClient.notes && <DetailRow label="Notes" value={selectedClient.notes} />}
             </div>
+
           </div>
         </DrillDownPanel>
       )}
