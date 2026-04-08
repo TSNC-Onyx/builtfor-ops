@@ -37,6 +37,7 @@ const fmtDate = (iso: string) => {
 };
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
 const isGifOnly = (s: string) => /^https?:\/\/media\.giphy\.com\/media\/[^/\s]+\/[^/\s]+\.gif(\?.*)?$/.test(s.trim());
+const fmtBytes = (n: number) => n < 1024*1024 ? `${Math.round(n/1024)}KB` : `${(n/1024/1024).toFixed(1)}MB`;
 
 function parseMarkdown(raw: string): React.ReactNode[] {
   const out: React.ReactNode[] = []; let s = raw, k = 0;
@@ -116,6 +117,18 @@ function DateDivider({ label }: { label: string }) {
   return <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 14px",margin:"4px 0"}}><div style={{flex:1,height:"1px",backgroundColor:"hsl(var(--surface-border))"}}/><span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",letterSpacing:"0.12em",textTransform:"uppercase",color:"hsl(var(--muted-foreground))",whiteSpace:"nowrap"}}>{label}</span><div style={{flex:1,height:"1px",backgroundColor:"hsl(var(--surface-border))"}}/></div>;
 }
 
+// ─── Shared toolbar button ─────────────────────────────────────────────────────
+function ToolBtn({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
+  return (
+    <button onClick={onClick} title={title}
+      style={{ height:"24px", minWidth:"28px", padding:"0 5px", display:"flex", alignItems:"center", justifyContent:"center", gap:"3px", background: active ? "hsl(var(--surface-border))" : "none", border:"1px solid", borderColor: active ? "hsl(var(--surface-border))" : "transparent", cursor:"pointer", borderRadius:"2px", fontFamily:"'DM Mono',monospace", fontSize:"9px", fontWeight:700, letterSpacing:"0.06em", color:"hsl(var(--muted-foreground))", opacity: active ? 1 : 0.7, transition:"opacity 0.1s, background 0.1s" }}
+      onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.opacity="1";}}
+      onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.opacity=active?"1":"0.7";}}>
+      {children}
+    </button>
+  );
+}
+
 // ─── Emoji Picker ─────────────────────────────────────────────────────────────
 function EmojiPicker({ onSelect, onClose }: { onSelect:(e:string)=>void; onClose:()=>void }) {
   const [cat, setCat] = useState(0);
@@ -126,7 +139,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect:(e:string)=>void; onClose
     document.addEventListener("mousedown",dn); document.addEventListener("keydown",kd);
     return()=>{document.removeEventListener("mousedown",dn);document.removeEventListener("keydown",kd);};
   },[onClose]);
-  return <div ref={ref} style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,width:"300px",backgroundColor:"hsl(var(--surface))",border:"1px solid hsl(var(--surface-border))",boxShadow:"0 -4px 20px rgba(10,20,40,0.18)",zIndex:20,display:"flex",flexDirection:"column"}}>
+  return <div ref={ref} style={{position:"absolute",bottom:"calc(100% + 4px)",left:0,width:"300px",backgroundColor:"hsl(var(--surface))",border:"1px solid hsl(var(--surface-border))",boxShadow:"0 -4px 20px rgba(10,20,40,0.18)",zIndex:20,display:"flex",flexDirection:"column"}}>
     <div style={{display:"flex",borderBottom:"1px solid hsl(var(--surface-border))",padding:"4px 6px",gap:"2px",overflowX:"auto"}}>
       {EMOJI_CATS.map((c,i)=><button key={i} onClick={()=>setCat(i)} title={c.label} style={{width:"28px",height:"28px",display:"flex",alignItems:"center",justifyContent:"center",background:cat===i?"hsl(var(--surface-raised))":"none",border:cat===i?"1px solid hsl(var(--surface-border))":"1px solid transparent",cursor:"pointer",fontSize:"15px",flexShrink:0,borderRadius:"2px"}}>{c.icon}</button>)}
     </div>
@@ -158,13 +171,11 @@ function GifPicker({ onSend, onClose }: { onSend:(url:string)=>void; onClose:()=
   }, []);
 
   useEffect(() => { fetchGifs(""); }, [fetchGifs]);
-
   useEffect(() => {
     clearTimeout(debRef.current);
     debRef.current = setTimeout(() => fetchGifs(query), 400);
     return () => clearTimeout(debRef.current);
   }, [query, fetchGifs]);
-
   useEffect(()=>{
     const dn=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))onClose();};
     const kd=(e:KeyboardEvent)=>{if(e.key==="Escape")onClose();};
@@ -172,24 +183,21 @@ function GifPicker({ onSend, onClose }: { onSend:(url:string)=>void; onClose:()=
     return()=>{document.removeEventListener("mousedown",dn);document.removeEventListener("keydown",kd);};
   },[onClose]);
 
-  return <div ref={ref} style={{position:"absolute",bottom:"calc(100% + 6px)",left:0,right:0,backgroundColor:"hsl(var(--surface))",border:"1px solid hsl(var(--surface-border))",boxShadow:"0 -4px 20px rgba(10,20,40,0.18)",zIndex:20,display:"flex",flexDirection:"column",maxHeight:"320px"}}>
-    {/* search */}
+  return <div ref={ref} style={{position:"absolute",bottom:"calc(100% + 4px)",left:0,right:0,backgroundColor:"hsl(var(--surface))",border:"1px solid hsl(var(--surface-border))",boxShadow:"0 -4px 20px rgba(10,20,40,0.18)",zIndex:20,display:"flex",flexDirection:"column",maxHeight:"320px"}}>
     <div style={{padding:"8px 10px",borderBottom:"1px solid hsl(var(--surface-border))",display:"flex",alignItems:"center",gap:"6px"}}>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--muted-foreground))" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
       <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search GIFs…" autoFocus style={{flex:1,background:"none",border:"none",outline:"none",fontFamily:"'DM Sans',sans-serif",fontSize:"12px",color:"hsl(var(--foreground))"}}/>
       {query&&<button onClick={()=>setQuery("")} style={{background:"none",border:"none",cursor:"pointer",color:"hsl(var(--muted-foreground))",fontSize:"14px",padding:0,lineHeight:1}}>×</button>}
     </div>
-    {/* label */}
     <div style={{padding:"4px 10px 2px",fontFamily:"'DM Mono',monospace",fontSize:"9px",letterSpacing:"0.1em",textTransform:"uppercase",color:"hsl(var(--muted-foreground))"}}>
-      {query.trim() ? `Results for "${query.trim()}"` : "Trending"}
+      {query.trim()?`Results for "${query.trim()}"` : "Trending"}
       <span style={{opacity:.5,marginLeft:"6px"}}>via GIPHY</span>
     </div>
-    {/* grid */}
     <div style={{overflowY:"auto",flex:1,padding:"4px 8px 8px"}}>
-      {loading && <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))"}}>Loading…</div>}
-      {err && <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Sans',sans-serif",fontSize:"12px",color:"hsl(var(--destructive))"}}>Could not load GIFs.</div>}
-      {!loading && !err && gifs.length === 0 && <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",opacity:.5}}>No results</div>}
-      {!loading && gifs.length > 0 && (
+      {loading&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))"}}>Loading…</div>}
+      {err&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Sans',sans-serif",fontSize:"12px",color:"hsl(var(--destructive))"}}>Could not load GIFs.</div>}
+      {!loading&&!err&&gifs.length===0&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",opacity:.5}}>No results</div>}
+      {!loading&&gifs.length>0&&(
         <div style={{columns:"3 auto",gap:"4px",columnFill:"balance"}}>
           {gifs.map(g=>(
             <button key={g.id} onClick={()=>{onSend(g.gifUrl);onClose();}} title={g.title||"GIF"} style={{display:"block",width:"100%",marginBottom:"4px",background:"none",border:"1px solid transparent",cursor:"pointer",padding:0,borderRadius:"2px",overflow:"hidden",breakInside:"avoid"}}
@@ -216,16 +224,12 @@ function MsgRow({ msg, isSearch }: { msg: Message; isSearch?: boolean }) {
       </span>
     </div>
   );
-
-  // Detect GIF-only message (just a GIPHY URL, nothing else)
   const gifOnly = isGifOnly(msg.content);
   const hasMedia = msg.attachments.length || msg.embeds.length || msg.stickers.length;
-
   return (
     <div style={{display:"flex",gap:"10px",padding:"4px 14px",alignItems:"flex-start",backgroundColor:isSearch?"hsl(var(--surface-raised))":undefined}}
       onMouseEnter={e=>{if(!isSearch)(e.currentTarget as HTMLDivElement).style.backgroundColor="hsl(var(--surface-raised))";}}
-      onMouseLeave={e=>{if(!isSearch)(e.currentTarget as HTMLDivElement).style.backgroundColor="";}}
-    >
+      onMouseLeave={e=>{if(!isSearch)(e.currentTarget as HTMLDivElement).style.backgroundColor="";}}>
       <Avatar author={msg.author} avatarUrl={msg.avatarUrl}/>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"baseline",gap:"6px",marginBottom:"1px"}}>
@@ -236,13 +240,9 @@ function MsgRow({ msg, isSearch }: { msg: Message; isSearch?: boolean }) {
           {isSearch&&<span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",opacity:.4,marginLeft:"auto"}}>{fmtDate(msg.timestamp)}</span>}
         </div>
         {msg.replyTo&&<ReplyBanner r={msg.replyTo}/>}
-        {gifOnly ? (
-          <img src={msg.content.trim()} alt="GIF" style={{maxWidth:"100%",maxHeight:"240px",objectFit:"contain",display:"block",marginTop:"4px",border:"1px solid hsl(var(--surface-border))"}}/>
-        ) : msg.content ? (
-          <p style={{margin:0,fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.5,wordBreak:"break-word",whiteSpace:"pre-wrap"}}>{parseMarkdown(msg.content)}</p>
-        ) : (!hasMedia) ? (
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:"10px",color:"hsl(var(--muted-foreground))",opacity:.35,fontStyle:"italic"}}>[content hidden — enable Message Content Intent]</span>
-        ) : null}
+        {gifOnly?<img src={msg.content.trim()} alt="GIF" style={{maxWidth:"100%",maxHeight:"240px",objectFit:"contain",display:"block",marginTop:"4px",border:"1px solid hsl(var(--surface-border))"}}/>
+        :msg.content?<p style={{margin:0,fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.5,wordBreak:"break-word",whiteSpace:"pre-wrap"}}>{parseMarkdown(msg.content)}</p>
+        :(!hasMedia)?<span style={{fontFamily:"'DM Mono',monospace",fontSize:"10px",color:"hsl(var(--muted-foreground))",opacity:.35,fontStyle:"italic"}}>[content hidden — enable Message Content Intent]</span>:null}
         <AttachBlock a={msg.attachments}/>
         <EmbedBlock e={msg.embeds}/>
         <StickerBlock s={msg.stickers}/>
@@ -259,57 +259,157 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
   const [sendErr, setSendErr] = useState<string|null>(null);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showGif, setShowGif] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File|null>(null);
+  const [uploading, setUploading] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  async function send(content?: string) {
-    const c = (content ?? value).trim();
-    if (!c || sending) return;
+  // Text-only send
+  async function sendText(content: string) {
+    const c = content.trim();
+    if (!c) return;
     setSending(true); setSendErr(null);
     try {
       const res = await fetch(EDGE_URL, { method:"POST", headers:{...H,"Content-Type":"application/json"}, body:JSON.stringify({content:c}) });
       const body = await res.json();
       if (!res.ok) { setSendErr(body?.error??`Failed (${res.status})`); return; }
-      if (!content) { setValue(""); if(taRef.current) taRef.current.style.height="auto"; }
       if (body.message) onSent(body.message);
     } catch { setSendErr("Network error."); }
     finally { setSending(false); }
+  }
+
+  // File upload send
+  async function sendFile(file: File, caption: string) {
+    setUploading(true); setSendErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      if (caption.trim()) fd.append("caption", caption.trim());
+      // Do NOT set Content-Type — browser sets it with correct multipart boundary
+      const res = await fetch(EDGE_URL, { method:"POST", headers: H, body: fd });
+      const body = await res.json();
+      if (!res.ok) { setSendErr(body?.error??`Upload failed (${res.status})`); return; }
+      if (body.message) onSent(body.message);
+      setPendingFile(null);
+      setValue("");
+      if (taRef.current) taRef.current.style.height = "auto";
+    } catch { setSendErr("Upload failed."); }
+    finally { setUploading(false); }
+  }
+
+  async function handleSend() {
+    if (sending || uploading) return;
+    if (pendingFile) {
+      await sendFile(pendingFile, value);
+    } else {
+      const c = value.trim();
+      if (!c) return;
+      await sendText(c);
+      setValue("");
+      if (taRef.current) taRef.current.style.height = "auto";
+    }
+  }
+
+  async function handleGifSend(url: string) {
+    await sendText(url);
   }
 
   function insertEmoji(em: string) {
     const el = taRef.current;
     if (!el) { setValue(v=>v+em); return; }
     const s=el.selectionStart??value.length, e=el.selectionEnd??value.length;
-    const next = value.slice(0,s)+em+value.slice(e);
-    setValue(next);
+    setValue(value.slice(0,s)+em+value.slice(e));
     requestAnimationFrame(()=>{ el.focus(); const p=s+em.length; el.setSelectionRange(p,p); });
   }
 
   function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key==="Enter"&&!e.shiftKey) { e.preventDefault(); send(); }
+    if (e.key==="Enter"&&!e.shiftKey) { e.preventDefault(); handleSend(); }
   }
   function onInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setValue(e.target.value);
     const el=e.target; el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,120)+"px";
   }
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setPendingFile(f);
+    e.target.value = ""; // reset so same file can be re-selected
+    if (f) setShowEmoji(false); setShowGif(false);
+  }
+
+  const busy = sending || uploading;
+  const canSend = !busy && (pendingFile !== null || value.trim().length > 0);
 
   return (
-    <div style={{flexShrink:0,padding:"8px 12px 10px",borderTop:"1px solid hsl(var(--surface-border))",backgroundColor:"hsl(var(--surface))",position:"relative"}}>
-      {showEmoji&&<EmojiPicker onSelect={insertEmoji} onClose={()=>setShowEmoji(false)}/>}
-      {showGif&&<GifPicker onSend={url=>send(url)} onClose={()=>setShowGif(false)}/>}
-      {sendErr&&<div style={{fontFamily:"'DM Sans',sans-serif",fontSize:"11px",color:"hsl(var(--destructive))",marginBottom:"5px",lineHeight:1.4}}>{sendErr}</div>}
-      <div style={{display:"flex",alignItems:"flex-end",gap:"6px",backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"6px 8px"}}>
-        <button onClick={()=>{setShowEmoji(s=>!s);setShowGif(false);}} aria-label="Emoji" style={{width:"26px",height:"26px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:showEmoji?"hsl(var(--surface-border))":"none",border:"none",cursor:"pointer",padding:0,fontSize:"16px",opacity:.75,borderRadius:"2px"}}>😊</button>
-        <button onClick={()=>{setShowGif(s=>!s);setShowEmoji(false);}} aria-label="GIF" style={{width:"26px",height:"26px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:showGif?"hsl(var(--surface-border))":"none",border:"none",cursor:"pointer",padding:0,borderRadius:"2px",opacity:.75}}>
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",fontWeight:700,letterSpacing:"0.04em",color:"hsl(var(--foreground))"}}>GIF</span>
-        </button>
-        <textarea ref={taRef} value={value} onChange={onInput} onKeyDown={onKey} placeholder="Message #general" disabled={sending} rows={1}
-          style={{flex:1,resize:"none",background:"none",border:"none",outline:"none",fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.45,minHeight:"20px",maxHeight:"120px",overflowY:"auto",padding:0,opacity:sending?.5:1}}/>
-        <button onClick={()=>send()} disabled={!value.trim()||sending} aria-label="Send"
-          style={{width:"26px",height:"26px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:value.trim()&&!sending?"#5865F2":"transparent",border:"none",borderRadius:"2px",cursor:value.trim()&&!sending?"pointer":"default",padding:0,transition:"background-color 0.12s",opacity:!value.trim()||sending?.3:1}}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square" strokeLinejoin="miter"/></svg>
+    <div style={{flexShrink:0, borderTop:"1px solid hsl(var(--surface-border))", backgroundColor:"hsl(var(--surface))", position:"relative"}}>
+
+      {/* Floating pickers — rendered relative to this container */}
+      {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={()=>setShowEmoji(false)}/>}
+      {showGif && <GifPicker onSend={handleGifSend} onClose={()=>setShowGif(false)}/>}
+
+      {/* Error */}
+      {sendErr && <div style={{padding:"4px 12px 0",fontFamily:"'DM Sans',sans-serif",fontSize:"11px",color:"hsl(var(--destructive))",lineHeight:1.4}}>{sendErr}</div>}
+
+      {/* Pending file badge */}
+      {pendingFile && (
+        <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"6px 12px 0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"6px",flex:1,backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"4px 8px",minWidth:0}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--muted-foreground))" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:"10px",color:"hsl(var(--foreground))",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{pendingFile.name}</span>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",flexShrink:0,opacity:.6}}>{fmtBytes(pendingFile.size)}</span>
+          </div>
+          <button onClick={()=>setPendingFile(null)} aria-label="Remove file" style={{width:"20px",height:"20px",display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:"none",cursor:"pointer",color:"hsl(var(--muted-foreground))",flexShrink:0,padding:0,opacity:.6}}>
+            <svg width="10" height="10" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/></svg>
+          </button>
+        </div>
+      )}
+
+      {/* Textarea */}
+      <div style={{padding:"8px 12px 0"}}>
+        <div style={{backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"7px 10px"}}>
+          <textarea ref={taRef} value={value} onChange={onInput} onKeyDown={onKey}
+            placeholder={pendingFile ? "Add a caption (optional)…" : "Message #general"}
+            disabled={busy} rows={1}
+            style={{display:"block",width:"100%",boxSizing:"border-box",resize:"none",background:"none",border:"none",outline:"none",fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.45,minHeight:"20px",maxHeight:"120px",overflowY:"auto",padding:0,opacity:busy?.5:1}}/>
+        </div>
+      </div>
+
+      {/* Toolbar row — immediately below textarea */}
+      <div style={{display:"flex",alignItems:"center",padding:"5px 10px 8px",gap:"4px"}}>
+
+        {/* Emoji — SVG smiley outline, mono style matching GIF */}
+        <ToolBtn active={showEmoji} onClick={()=>{setShowEmoji(s=>!s);setShowGif(false);}} title="Emoji">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+            <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="3"/>
+            <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="3"/>
+          </svg>
+        </ToolBtn>
+
+        {/* GIF — text label, same mono style */}
+        <ToolBtn active={showGif} onClick={()=>{setShowGif(s=>!s);setShowEmoji(false);}} title="GIF">
+          GIF
+        </ToolBtn>
+
+        {/* Attachment — paperclip SVG, same mono style */}
+        <input ref={fileRef} type="file" onChange={onFileChange} style={{display:"none"}} accept="*/*"/>
+        <ToolBtn active={pendingFile !== null} onClick={()=>fileRef.current?.click()} title="Attach file">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </ToolBtn>
+
+        <div style={{flex:1}}/>
+
+        {/* Send */}
+        <button onClick={handleSend} disabled={!canSend} aria-label="Send"
+          style={{width:"28px",height:"28px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:canSend?"#5865F2":"transparent",border:"none",borderRadius:"2px",cursor:canSend?"pointer":"default",padding:0,transition:"background-color 0.12s",opacity:canSend?1:.3}}>
+          {busy
+            ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{animation:"spin 0.8s linear infinite"}}><circle cx="12" cy="12" r="9" stroke="hsl(var(--muted-foreground))" strokeWidth="2" strokeDasharray="28 28"/></svg>
+            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square" strokeLinejoin="miter"/></svg>
+          }
         </button>
       </div>
-      <div style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",opacity:.4,marginTop:"3px",textAlign:"right"}}>Enter · Shift+Enter for newline</div>
     </div>
   );
 }
@@ -324,7 +424,6 @@ export function DiscordFeed() {
   const [error, setError] = useState<string|null>(null);
   const [newCount, setNewCount] = useState(0);
   const [intentGap, setIntentGap] = useState(false);
-  // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<Message[]|null>(null);
@@ -338,7 +437,6 @@ export function DiscordFeed() {
   const prependHeightRef = useRef(0);
   const isPrependRef = useRef(false);
 
-  // Preserve scroll position after prepending older messages
   useLayoutEffect(() => {
     if (isPrependRef.current && scrollRef.current && prependHeightRef.current > 0) {
       const diff = scrollRef.current.scrollHeight - prependHeightRef.current;
@@ -362,8 +460,7 @@ export function DiscordFeed() {
         return;
       }
       const msgs: Message[] = body.messages ?? [];
-      const gap = msgs.some(m=>m.type===0&&!m.content&&!m.attachments.length&&!m.embeds.length&&!m.stickers.length);
-      if (gap) setIntentGap(true);
+      if (msgs.some(m=>m.type===0&&!m.content&&!m.attachments.length&&!m.embeds.length&&!m.stickers.length)) setIntentGap(true);
       if (msgs.length > 0) {
         const latest = msgs[msgs.length-1].id;
         if (prevIdRef.current && latest !== prevIdRef.current && !open) setNewCount(n=>n+1);
@@ -394,15 +491,13 @@ export function DiscordFeed() {
   }
 
   async function performSearch(q: string) {
-    q = q.trim();
-    if (!q) { setSearchResults(null); setSearchErr(null); return; }
+    q = q.trim(); if (!q) { setSearchResults(null); setSearchErr(null); return; }
     setSearchLoading(true); setSearchErr(null);
     try {
       const res = await fetch(`${EDGE_URL}?action=search&q=${encodeURIComponent(q)}`, { headers: H });
       const body = await res.json();
       if (!res.ok) { setSearchErr(`Search failed (${res.status})`); setSearchResults([]); return; }
-      setSearchResults(body.messages ?? []);
-      setSearchTotal(body.total ?? 0);
+      setSearchResults(body.messages ?? []); setSearchTotal(body.total ?? 0);
     } catch { setSearchErr("Search request failed."); setSearchResults([]); }
     finally { setSearchLoading(false); }
   }
@@ -432,10 +527,7 @@ export function DiscordFeed() {
   }, []);
 
   useEffect(() => {
-    if (open) {
-      setNewCount(0);
-      setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},80);
-    }
+    if (open) { setNewCount(0); setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},80); }
   }, [open]);
 
   useEffect(() => {
@@ -445,7 +537,6 @@ export function DiscordFeed() {
     }
   }, [messages, open, searchOpen]);
 
-  // Build items with date dividers
   const items: Array<{type:"div";label:string}|{type:"msg";msg:Message}> = [];
   const activeMsgs = searchOpen && searchResults !== null ? searchResults : messages;
   activeMsgs.forEach((msg,i) => {
@@ -453,12 +544,10 @@ export function DiscordFeed() {
     if (!prev || !sameDay(prev.timestamp, msg.timestamp)) items.push({type:"div",label:fmtDate(msg.timestamp)});
     items.push({type:"msg",msg});
   });
-
   const inSearch = searchOpen && searchResults !== null;
 
   return (
     <>
-      {/* Panel */}
       <div style={{position:"fixed",top:"56px",right:0,bottom:0,width:"360px",zIndex:200,display:"flex",flexDirection:"column",backgroundColor:"hsl(var(--surface))",borderLeft:"1px solid hsl(var(--surface-border))",transform:open?"translateX(0)":"translateX(100%)",transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",boxShadow:open?"-8px 0 32px rgba(10,20,40,0.22)":"none"}}>
 
         {/* Header */}
@@ -469,8 +558,7 @@ export function DiscordFeed() {
             {!searchOpen&&<span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",opacity:.45}}>— live</span>}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:"2px"}}>
-            {/* Search toggle */}
-            <button onClick={()=>{setSearchOpen(s=>{if(s){setSearchQ("");setSearchResults(null);setSearchErr(null);}return !s;});}} aria-label="Search" title="Search messages" style={{width:"28px",height:"28px",display:"flex",alignItems:"center",justifyContent:"center",color:searchOpen?"hsl(var(--foreground))":"hsl(var(--muted-foreground))",background:searchOpen?"hsl(var(--surface-raised))":"none",border:"none",cursor:"pointer",padding:0,opacity:.75,borderRadius:"2px"}}>
+            <button onClick={()=>{setSearchOpen(s=>{if(s){setSearchQ("");setSearchResults(null);setSearchErr(null);}return !s;});}} aria-label="Search" style={{width:"28px",height:"28px",display:"flex",alignItems:"center",justifyContent:"center",color:searchOpen?"hsl(var(--foreground))":"hsl(var(--muted-foreground))",background:searchOpen?"hsl(var(--surface-raised))":"none",border:"none",cursor:"pointer",padding:0,opacity:.75,borderRadius:"2px"}}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </button>
             <button onClick={()=>fetchMessages()} aria-label="Refresh" style={{width:"28px",height:"28px",display:"flex",alignItems:"center",justifyContent:"center",color:"hsl(var(--muted-foreground))",background:"none",border:"none",cursor:"pointer",padding:0,opacity:loading?.4:.65}}>
@@ -501,9 +589,7 @@ export function DiscordFeed() {
         {intentGap && !searchOpen && (
           <div style={{padding:"7px 14px",backgroundColor:"rgba(196,98,45,0.08)",borderBottom:"1px solid rgba(196,98,45,0.2)",display:"flex",alignItems:"flex-start",gap:"8px"}}>
             <span style={{fontSize:"13px",flexShrink:0,marginTop:"1px"}}>⚠️</span>
-            <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:"11px",color:"hsl(var(--muted-foreground))",lineHeight:1.45}}>
-              Some messages are hidden. Enable <strong>Message Content Intent</strong>: Discord Developer Portal → Bot → Privileged Gateway Intents.
-            </div>
+            <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:"11px",color:"hsl(var(--muted-foreground))",lineHeight:1.45}}>Some messages are hidden. Enable <strong>Message Content Intent</strong>: Discord Developer Portal → Bot → Privileged Gateway Intents.</div>
           </div>
         )}
 
@@ -512,35 +598,25 @@ export function DiscordFeed() {
           {loading&&!messages.length&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1,fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",letterSpacing:"0.08em"}}>Loading…</div>}
           {error&&<div style={{margin:"12px 14px",padding:"10px 12px",backgroundColor:"rgba(220,38,38,0.06)",border:"1px solid rgba(220,38,38,0.18)",fontFamily:"'DM Sans',sans-serif",fontSize:"12px",lineHeight:1.5,color:"hsl(var(--destructive))"}}>{error}</div>}
           {!loading&&!error&&!messages.length&&!inSearch&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1,fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",opacity:.45,letterSpacing:"0.08em"}}>No messages yet</div>}
-
-          {/* Load older button */}
-          {!inSearch && hasMore && messages.length > 0 && (
+          {!inSearch&&hasMore&&messages.length>0&&(
             <div style={{display:"flex",justifyContent:"center",padding:"6px 0"}}>
               <button onClick={loadMore} disabled={loadingMore} style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",letterSpacing:"0.1em",textTransform:"uppercase",color:"hsl(var(--muted-foreground))",background:"none",border:"1px solid hsl(var(--surface-border))",cursor:loadingMore?"default":"pointer",padding:"4px 12px",opacity:loadingMore?.5:1,borderRadius:"2px"}}>
                 {loadingMore?"Loading…":"↑ Load older messages"}
               </button>
             </div>
           )}
-
-          {/* Search empty state */}
-          {inSearch && searchResults?.length === 0 && !searchLoading && (
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1,fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",opacity:.45,letterSpacing:"0.08em"}}>No messages found</div>
-          )}
-
+          {inSearch&&searchResults?.length===0&&!searchLoading&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1,fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",opacity:.45,letterSpacing:"0.08em"}}>No messages found</div>}
           {items.map((item,idx) => {
             if (item.type==="div") return <DateDivider key={`d${idx}`} label={item.label}/>;
             return <MsgRow key={item.msg.id} msg={item.msg} isSearch={inSearch}/>;
           })}
         </div>
 
-        {/* Message input — hidden in search mode */}
         {!searchOpen && <MessageInput onSent={handleSent}/>}
       </div>
 
-      {/* Dim overlay */}
       {open&&<div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:199,backgroundColor:"rgba(10,20,40,0.2)"}}/>}
 
-      {/* Bubble */}
       {!open&&(
         <button onClick={()=>setOpen(true)} aria-label="Open Discord feed" style={{position:"fixed",bottom:"24px",right:"24px",zIndex:201,width:"46px",height:"46px",borderRadius:"0px",backgroundColor:"#1B3C6E",border:"1px solid rgba(248,246,241,0.25)",boxShadow:"0 3px 14px rgba(27,60,110,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.053a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.026c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" fill="#F8F6F1"/></svg>
