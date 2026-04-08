@@ -3,9 +3,9 @@ import { toast } from "sonner";
 import { OpsShell } from "@/components/ops/OpsShell";
 import { MetricsBar } from "@/components/ops/MetricsBar";
 import { useProspects } from "@/hooks/useProspects";
-import { useClients } from "@/hooks/useClients";
+import { useClients, type ClientWithSubscription } from "@/hooks/useClients";
 import { formatDate, displayPhone } from "@/lib/utils";
-import type { Client, ClientStatus, PricingTier, IndustryVertical } from "@/types/pipeline";
+import type { ClientStatus, PricingTier, IndustryVertical } from "@/types/pipeline";
 import { verticalLabel, TIER_LABELS, TIER_OPTIONS } from "@/types/pipeline";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 import { buildSetupFeePaymentLink } from "@/lib/stripe.service";
@@ -22,23 +22,29 @@ const GREEN = "hsl(145,50%,40%)";
 const STEEL = "hsl(216,21%,62%)";
 
 const STATUS_COLOR: Record<string, string> = {
-  onboarding: RUST,
-  active:     NAVY,
-  at_risk:    "hsl(38,90%,50%)",
-  churned:    STEEL,
-  paused:     STEEL,
+  onboarding: RUST, active: NAVY,
+  at_risk: "hsl(38,90%,50%)", churned: STEEL, paused: STEEL,
 };
-
 const HEALTH_COLOR: Record<string, string> = {
-  healthy:         GREEN,
-  needs_attention: "hsl(38,90%,50%)",
-  at_risk:         RUST,
-  critical:        "hsl(0,72%,50%)",
+  healthy: GREEN, needs_attention: "hsl(38,90%,50%)", at_risk: RUST, critical: "hsl(0,72%,50%)",
 };
 
 function statusColor(s: string): string { return STATUS_COLOR[s] ?? STEEL; }
 function healthColor(s: string): string { return HEALTH_COLOR[s] ?? STEEL; }
 function formatEnum(s: string): string  { return s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()); }
+
+/**
+ * Derives the effective monthly rate for display from the subscription row.
+ * Reads effective_rate_cents (DB-generated column) when available.
+ * Falls back to monthly_rate_cents, then zero.
+ * Never uses hardcoded tier assumptions.
+ */
+function clientEffectiveRate(c: ClientWithSubscription): number {
+  if (c.status === "churned" || c.status === "paused") return 0;
+  const sub = c.subscription;
+  if (!sub) return 0;
+  return sub.effective_rate_cents ?? sub.monthly_rate_cents ?? 0;
+}
 
 export default function Clients() {
   const { data: clients = [], isLoading, isError } = useClients();
@@ -48,16 +54,13 @@ export default function Clients() {
   const [filterTier, setFilterTier]       = useState<PricingTier | "all">("all");
   const [filterVertical, setFilterVertical] = useState<IndustryVertical | "all">("all");
   const [page, setPage]                   = useState(1);
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-  // selectedTier: the tier the operator has chosen for link generation.
-  // Defaults to the client's own pricing_tier when a client is opened.
+  const [selectedClient, setSelectedClient] = useState<ClientWithSubscription | null>(null);
   const [selectedTier, setSelectedTier]   = useState<PricingTier | null>(null);
   const [linkLoading, setLinkLoading]     = useState(false);
 
   const resetPage = () => setPage(1);
 
-  // When opening a client, seed the tier selector to their stored tier
-  function openClient(c: Client) {
+  function openClient(c: ClientWithSubscription) {
     setSelectedClient(c);
     setSelectedTier(c.pricing_tier);
   }
@@ -78,18 +81,17 @@ export default function Clients() {
   const safeP      = Math.min(page, totalPages);
   const paginated  = filtered.slice((safeP - 1) * PAGE_SIZE, safeP * PAGE_SIZE);
 
-  const mrr = clients.reduce((sum, c) => {
-    if (c.status === "churned" || c.status === "paused") return sum;
-    return sum + (c.pricing_tier === "standard" ? 400 : 300);
-  }, 0);
+  // MRR derived from actual subscription effective_rate_cents — never hardcoded
+  const mrr = useMemo(() =>
+    clients.reduce((sum, c) => sum + clientEffectiveRate(c), 0),
+  [clients]);
 
-  function clientMrr(c: Client): string {
-    if (c.status === "churned" || c.status === "paused") return "$0/mo";
-    return `$${c.pricing_tier === "standard" ? 400 : 300}/mo`;
+  function clientMrrLabel(c: ClientWithSubscription): string {
+    const rate = clientEffectiveRate(c);
+    return rate > 0 ? `$${(rate / 100).toLocaleString("en-US")}/mo` : "$0/mo";
   }
 
-  // Resolve link for the currently selected tier override
-  async function resolveLink(c: Client, tier: PricingTier): Promise<string> {
+  async function resolveLink(c: ClientWithSubscription, tier: PricingTier): Promise<string> {
     return buildSetupFeePaymentLink({
       client_id:     c.id,
       business_name: c.business_name,
@@ -99,32 +101,31 @@ export default function Clients() {
     });
   }
 
-  async function handleCopyLink(c: Client, tier: PricingTier) {
+  async function handleCopyLink(c: ClientWithSubscription, tier: PricingTier) {
     setLinkLoading(true);
     try {
       const url = await resolveLink(c, tier);
       await navigator.clipboard.writeText(url);
-      toast.success(`Payment link copied — ${TIER_LABELS[tier]}`);
+      toast.success(`Payment link copied \u2014 ${TIER_LABELS[tier]}`);
     } catch {
-      toast.error("Failed to copy link — check connection and retry.");
+      toast.error("Failed to copy link \u2014 check connection and retry.");
     } finally {
       setLinkLoading(false);
     }
   }
 
-  async function handleOpenLink(c: Client, tier: PricingTier) {
+  async function handleOpenLink(c: ClientWithSubscription, tier: PricingTier) {
     setLinkLoading(true);
     try {
       const url = await resolveLink(c, tier);
       window.open(url, "_blank");
     } catch {
-      toast.error("Failed to open link — check connection and retry.");
+      toast.error("Failed to open link \u2014 check connection and retry.");
     } finally {
       setLinkLoading(false);
     }
   }
 
-  // Active tier for the open panel — falls back to client's own tier
   const activeTier: PricingTier = selectedTier ?? selectedClient?.pricing_tier ?? "standard";
 
   return (
@@ -134,14 +135,13 @@ export default function Clients() {
       <div className="px-4 md:px-6 py-4" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <h1 className="font-display text-[24px] md:text-[28px] tracking-[0.02em] leading-none" style={{ color: "hsl(var(--foreground))" }}>Clients</h1>
         <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-          {clients.length} accounts · ${mrr.toLocaleString()}/mo MRR
+          {clients.length} accounts \u00b7 ${mrr > 0 ? (mrr / 100).toLocaleString("en-US") : "0"}/mo MRR
         </p>
       </div>
 
-      {/* Search + Filters */}
       <div className="px-4 md:px-6 py-3 flex flex-wrap gap-2 items-center" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <input
-          type="text" placeholder="Search name, email, state…"
+          type="text" placeholder="Search name, email, state\u2026"
           value={search} onChange={e => { setSearch(e.target.value); resetPage(); }}
           style={{
             fontFamily: "'DM Sans', sans-serif", fontSize: "13px",
@@ -170,18 +170,17 @@ export default function Clients() {
         </span>
       </div>
 
-      {isLoading && <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients…</div>}
-      {isError   && <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>Failed to load clients — check connection and refresh.</div>}
+      {isLoading && <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients\u2026</div>}
+      {isError   && <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>Failed to load clients \u2014 check connection and refresh.</div>}
 
       {!isLoading && !isError && filtered.length === 0 && (
         <div className="mx-4 md:mx-6 my-6 p-10 text-center" style={{ border: "1px dashed hsl(var(--border))" }}>
           <div className="font-mono text-[10px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {clients.length === 0 ? "No clients yet — convert a won prospect from Pipeline" : "No results match filters"}
+            {clients.length === 0 ? "No clients yet \u2014 convert a won prospect from Pipeline" : "No results match filters"}
           </div>
         </div>
       )}
 
-      {/* Client rows */}
       <div className="px-4 md:px-6 pb-3 space-y-1 mt-1">
         {paginated.map(c => (
           <div key={c.id} onClick={() => openClient(c)}
@@ -197,19 +196,18 @@ export default function Clients() {
             <span className="hidden sm:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{verticalLabel(c.vertical, c.vertical_custom)}</span>
             <span className="hidden md:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{TIER_LABELS[c.pricing_tier]}</span>
             <span className="hidden lg:inline font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>{formatDate(c.created_at)}</span>
-            <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>→</span>
+            <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>\u2192</span>
           </div>
         ))}
       </div>
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="px-4 md:px-6 py-4 flex items-center gap-2 justify-between" style={{ borderTop: "1px solid hsl(var(--border))" }}>
           <span className="font-mono text-[10px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Page {safeP} of {totalPages} · {filtered.length} results
+            Page {safeP} of {totalPages} \u00b7 {filtered.length} results
           </span>
           <div className="flex gap-1">
-            <PagBtn label="‹" disabled={safeP === 1}          onClick={() => setPage(p => Math.max(1, p - 1))} />
+            <PagBtn label="\u2039" disabled={safeP === 1} onClick={() => setPage(p => Math.max(1, p - 1))} />
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter(n => n === 1 || n === totalPages || Math.abs(n - safeP) <= 1)
               .reduce<(number | "...")[]>((acc, n, i, arr) => {
@@ -217,82 +215,59 @@ export default function Clients() {
                 acc.push(n); return acc;
               }, [])
               .map((n, i) => n === "..." ? (
-                <span key={`e${i}`} className="font-mono text-[10px] px-2 py-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>…</span>
+                <span key={`e${i}`} className="font-mono text-[10px] px-2 py-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>\u2026</span>
               ) : (
                 <PagBtn key={n} label={String(n)} active={n === safeP} onClick={() => setPage(n as number)} />
               ))}
-            <PagBtn label="›" disabled={safeP === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} />
+            <PagBtn label="\u203a" disabled={safeP === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} />
           </div>
         </div>
       )}
 
-      {/* Client detail panel */}
       {selectedClient && (
         <DrillDownPanel title={selectedClient.business_name} onClose={() => { setSelectedClient(null); setSelectedTier(null); }}>
           <div className="space-y-4">
 
-            {/* ── SETUP FEE PAYMENT LINK ── */}
             <div style={{ backgroundColor: `${NAVY}12`, border: `1px solid ${NAVY}33`, padding: "14px 16px" }}>
               <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Setup Fee Payment Link</div>
-
-              {/* Tier selector dropdown */}
               <div className="mb-3">
                 <label className="font-mono text-[9px] tracking-[0.12em] uppercase block mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Select link type</label>
                 <select
                   value={activeTier}
                   onChange={e => setSelectedTier(e.target.value as PricingTier)}
                   style={{
-                    fontFamily: "'DM Mono', monospace",
-                    fontSize: "11px",
-                    letterSpacing: "0.06em",
-                    padding: "7px 10px",
-                    width: "100%",
+                    fontFamily: "'DM Mono', monospace", fontSize: "11px", letterSpacing: "0.06em",
+                    padding: "7px 10px", width: "100%",
                     border: `1px solid ${NAVY}66`,
                     backgroundColor: "hsl(var(--surface-raised))",
-                    color: "hsl(var(--foreground))",
-                    outline: "none",
+                    color: "hsl(var(--foreground))", outline: "none",
                   }}
                 >
                   {TIER_OPTIONS.map(t => (
-                    <option key={t} value={t}>
-                      {TIER_LABELS[t]} — {formatCents(setupFeeCents(t))}
-                    </option>
+                    <option key={t} value={t}>{TIER_LABELS[t]} \u2014 {formatCents(setupFeeCents(t))}</option>
                   ))}
                 </select>
               </div>
-
-              {/* Indicator if selected tier differs from client's stored tier */}
               {activeTier !== selectedClient.pricing_tier && (
                 <div className="font-mono text-[9px] tracking-[0.08em] mb-2" style={{ color: RUST }}>
-                  ⚠ Override active — client tier is {TIER_LABELS[selectedClient.pricing_tier]}
+                  \u26a0 Override active \u2014 client tier is {TIER_LABELS[selectedClient.pricing_tier]}
                 </div>
               )}
-
-              {/* Actions */}
               <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => handleCopyLink(selectedClient, activeTier)}
-                  disabled={linkLoading}
+                <button onClick={() => handleCopyLink(selectedClient, activeTier)} disabled={linkLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ backgroundColor: NAVY, color: "hsl(38,33%,92%)", border: "none", cursor: linkLoading ? "not-allowed" : "pointer" }}
-                >
-                  {linkLoading ? "Loading…" : "Copy Link"}
-                </button>
-                <button
-                  onClick={() => handleOpenLink(selectedClient, activeTier)}
-                  disabled={linkLoading}
+                >{linkLoading ? "Loading\u2026" : "Copy Link"}</button>
+                <button onClick={() => handleOpenLink(selectedClient, activeTier)} disabled={linkLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ border: `1px solid ${RUST}`, color: RUST, background: "none", cursor: linkLoading ? "not-allowed" : "pointer" }}
-                >
-                  Open Link
-                </button>
+                >Open Link</button>
               </div>
               <p className="font-mono text-[9px] tracking-[0.08em] mt-2" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
-                Prefills client email · attaches client ID for reconciliation
+                Prefills client email \u00b7 attaches client ID for reconciliation
               </p>
             </div>
 
-            {/* ── OPERATIONAL STATE ── */}
             <div className="space-y-3">
               <DetailRow label="Status">
                 <span className="font-mono text-[10px] tracking-[0.1em] uppercase px-2 py-1"
@@ -305,12 +280,12 @@ export default function Clients() {
                   {formatEnum(selectedClient.health_signal || "healthy")}
                 </span>
               </DetailRow>
-              <DetailRow label="MRR"      value={clientMrr(selectedClient)} />
+              {/* MRR read from subscription effective_rate_cents — never hardcoded */}
+              <DetailRow label="MRR" value={clientMrrLabel(selectedClient)} />
               <DetailRow label="Vertical" value={verticalLabel(selectedClient.vertical, selectedClient.vertical_custom)} />
               <DetailRow label="Tier"     value={TIER_LABELS[selectedClient.pricing_tier]} />
             </div>
 
-            {/* ── CONTACT DETAILS ── */}
             <div className="space-y-3" style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: "12px" }}>
               <DetailRow label="Owner" value={selectedClient.owner_name} />
               <DetailRow label="Email">
@@ -319,7 +294,7 @@ export default function Clients() {
                     style={{ color: "hsl(var(--foreground))", textDecorationLine: "underline", textDecorationColor: `${RUST}80` }}>
                     {selectedClient.email}
                   </a>
-                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>—</span>}
+                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>\u2014</span>}
               </DetailRow>
               <DetailRow label="Phone">
                 {selectedClient.phone ? (
@@ -327,9 +302,9 @@ export default function Clients() {
                     style={{ color: "hsl(var(--foreground))", textDecorationLine: "underline", textDecorationColor: `${RUST}80` }}>
                     {displayPhone(selectedClient.phone)}
                   </a>
-                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>—</span>}
+                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>\u2014</span>}
               </DetailRow>
-              <DetailRow label="State"   value={selectedClient.state || "—"} />
+              <DetailRow label="State"   value={selectedClient.state || "\u2014"} />
               <DetailRow label="Started" value={formatDate(selectedClient.created_at)} />
               {selectedClient.notes && <DetailRow label="Notes" value={selectedClient.notes} />}
             </div>
