@@ -36,7 +36,12 @@ const fmtDate = (iso: string) => {
   return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 };
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
-const isGifOnly = (s: string) => /^https?:\/\/media\.giphy\.com\/media\/[^/\s]+\/[^/\s]+\.gif(\?.*)?$/.test(s.trim());
+// Match Tenor CDN GIF URLs (media.tenor.com, c.tenor.com, media1.tenor.com, etc.) and legacy GIPHY URLs
+const isGifOnly = (s: string) => {
+  const t = s.trim();
+  if (!t || t.includes(" ") || t.includes("\n")) return false;
+  return /^https?:\/\/(media\d*\.giphy\.com\/media\/[^/\s]+\/[^/\s]+|(?:media\d*|c)\.tenor\.com\/[^\s]+)\.gif(\?.*)?$/i.test(t);
+};
 const fmtBytes = (n: number) => n < 1024*1024 ? `${Math.round(n/1024)}KB` : `${(n/1024/1024).toFixed(1)}MB`;
 
 function parseMarkdown(raw: string): React.ReactNode[] {
@@ -191,7 +196,7 @@ function GifPicker({ onSend, onClose }: { onSend:(url:string)=>void; onClose:()=
     </div>
     <div style={{padding:"4px 10px 2px",fontFamily:"'DM Mono',monospace",fontSize:"9px",letterSpacing:"0.1em",textTransform:"uppercase",color:"hsl(var(--muted-foreground))"}}>
       {query.trim()?`Results for "${query.trim()}"` : "Trending"}
-      <span style={{opacity:.5,marginLeft:"6px"}}>via GIPHY</span>
+      <span style={{opacity:.5,marginLeft:"6px"}}>via Tenor</span>
     </div>
     <div style={{overflowY:"auto",flex:1,padding:"4px 8px 8px"}}>
       {loading&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"80px",fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))"}}>Loading…</div>}
@@ -264,10 +269,8 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Text-only send
   async function sendText(content: string) {
-    const c = content.trim();
-    if (!c) return;
+    const c = content.trim(); if (!c) return;
     setSending(true); setSendErr(null);
     try {
       const res = await fetch(EDGE_URL, { method:"POST", headers:{...H,"Content-Type":"application/json"}, body:JSON.stringify({content:c}) });
@@ -278,20 +281,17 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
     finally { setSending(false); }
   }
 
-  // File upload send
   async function sendFile(file: File, caption: string) {
     setUploading(true); setSendErr(null);
     try {
       const fd = new FormData();
       fd.append("file", file, file.name);
       if (caption.trim()) fd.append("caption", caption.trim());
-      // Do NOT set Content-Type — browser sets it with correct multipart boundary
       const res = await fetch(EDGE_URL, { method:"POST", headers: H, body: fd });
       const body = await res.json();
       if (!res.ok) { setSendErr(body?.error??`Upload failed (${res.status})`); return; }
       if (body.message) onSent(body.message);
-      setPendingFile(null);
-      setValue("");
+      setPendingFile(null); setValue("");
       if (taRef.current) taRef.current.style.height = "auto";
     } catch { setSendErr("Upload failed."); }
     finally { setUploading(false); }
@@ -299,19 +299,12 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
 
   async function handleSend() {
     if (sending || uploading) return;
-    if (pendingFile) {
-      await sendFile(pendingFile, value);
-    } else {
-      const c = value.trim();
-      if (!c) return;
+    if (pendingFile) { await sendFile(pendingFile, value); }
+    else {
+      const c = value.trim(); if (!c) return;
       await sendText(c);
-      setValue("");
-      if (taRef.current) taRef.current.style.height = "auto";
+      setValue(""); if (taRef.current) taRef.current.style.height = "auto";
     }
-  }
-
-  async function handleGifSend(url: string) {
-    await sendText(url);
   }
 
   function insertEmoji(em: string) {
@@ -331,9 +324,8 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
   }
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
-    setPendingFile(f);
-    e.target.value = ""; // reset so same file can be re-selected
-    if (f) setShowEmoji(false); setShowGif(false);
+    setPendingFile(f); e.target.value="";
+    if (f) { setShowEmoji(false); setShowGif(false); }
   }
 
   const busy = sending || uploading;
@@ -341,15 +333,9 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
 
   return (
     <div style={{flexShrink:0, borderTop:"1px solid hsl(var(--surface-border))", backgroundColor:"hsl(var(--surface))", position:"relative"}}>
-
-      {/* Floating pickers — rendered relative to this container */}
       {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={()=>setShowEmoji(false)}/>}
-      {showGif && <GifPicker onSend={handleGifSend} onClose={()=>setShowGif(false)}/>}
-
-      {/* Error */}
+      {showGif && <GifPicker onSend={url=>sendText(url)} onClose={()=>setShowGif(false)}/>}
       {sendErr && <div style={{padding:"4px 12px 0",fontFamily:"'DM Sans',sans-serif",fontSize:"11px",color:"hsl(var(--destructive))",lineHeight:1.4}}>{sendErr}</div>}
-
-      {/* Pending file badge */}
       {pendingFile && (
         <div style={{display:"flex",alignItems:"center",gap:"8px",padding:"6px 12px 0"}}>
           <div style={{display:"flex",alignItems:"center",gap:"6px",flex:1,backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"4px 8px",minWidth:0}}>
@@ -362,8 +348,6 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
           </button>
         </div>
       )}
-
-      {/* Textarea */}
       <div style={{padding:"8px 12px 0"}}>
         <div style={{backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"7px 10px"}}>
           <textarea ref={taRef} value={value} onChange={onInput} onKeyDown={onKey}
@@ -372,40 +356,26 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
             style={{display:"block",width:"100%",boxSizing:"border-box",resize:"none",background:"none",border:"none",outline:"none",fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.45,minHeight:"20px",maxHeight:"120px",overflowY:"auto",padding:0,opacity:busy?.5:1}}/>
         </div>
       </div>
-
-      {/* Toolbar row — immediately below textarea */}
       <div style={{display:"flex",alignItems:"center",padding:"5px 10px 8px",gap:"4px"}}>
-
-        {/* Emoji — SVG smiley outline, mono style matching GIF */}
         <ToolBtn active={showEmoji} onClick={()=>{setShowEmoji(s=>!s);setShowGif(false);}} title="Emoji">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+            <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/>
             <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="3"/>
             <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="3"/>
           </svg>
         </ToolBtn>
-
-        {/* GIF — text label, same mono style */}
-        <ToolBtn active={showGif} onClick={()=>{setShowGif(s=>!s);setShowEmoji(false);}} title="GIF">
-          GIF
-        </ToolBtn>
-
-        {/* Attachment — paperclip SVG, same mono style */}
+        <ToolBtn active={showGif} onClick={()=>{setShowGif(s=>!s);setShowEmoji(false);}} title="GIF">GIF</ToolBtn>
         <input ref={fileRef} type="file" onChange={onFileChange} style={{display:"none"}} accept="*/*"/>
         <ToolBtn active={pendingFile !== null} onClick={()=>fileRef.current?.click()} title="Attach file">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
         </ToolBtn>
-
         <div style={{flex:1}}/>
-
-        {/* Send */}
         <button onClick={handleSend} disabled={!canSend} aria-label="Send"
           style={{width:"28px",height:"28px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",backgroundColor:canSend?"#5865F2":"transparent",border:"none",borderRadius:"2px",cursor:canSend?"pointer":"default",padding:0,transition:"background-color 0.12s",opacity:canSend?1:.3}}>
           {busy
-            ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" style={{animation:"spin 0.8s linear infinite"}}><circle cx="12" cy="12" r="9" stroke="hsl(var(--muted-foreground))" strokeWidth="2" strokeDasharray="28 28"/></svg>
+            ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="hsl(var(--muted-foreground))" strokeWidth="2" strokeDasharray="28 28"/></svg>
             : <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square"/><path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square" strokeLinejoin="miter"/></svg>
           }
         </button>
@@ -441,14 +411,12 @@ export function DiscordFeed() {
     if (isPrependRef.current && scrollRef.current && prependHeightRef.current > 0) {
       const diff = scrollRef.current.scrollHeight - prependHeightRef.current;
       scrollRef.current.scrollTop = diff;
-      prependHeightRef.current = 0;
-      isPrependRef.current = false;
+      prependHeightRef.current = 0; isPrependRef.current = false;
     }
   }, [messages]);
 
   async function fetchMessages(quiet = false) {
-    if (!quiet) setLoading(true);
-    setError(null);
+    if (!quiet) setLoading(true); setError(null);
     try {
       const res = await fetch(`${EDGE_URL}?limit=50`, { headers: H });
       const body = await res.json();
@@ -466,16 +434,14 @@ export function DiscordFeed() {
         if (prevIdRef.current && latest !== prevIdRef.current && !open) setNewCount(n=>n+1);
         prevIdRef.current = latest;
       }
-      setHasMore(body.hasMore ?? (msgs.length === 50));
-      setMessages(msgs);
+      setHasMore(body.hasMore ?? (msgs.length === 50)); setMessages(msgs);
     } catch { setError("Could not reach the Discord feed."); }
     finally { setLoading(false); }
   }
 
   async function loadMore() {
     if (loadingMore || !hasMore || messages.length === 0) return;
-    const oldest = messages[0].id;
-    setLoadingMore(true);
+    const oldest = messages[0].id; setLoadingMore(true);
     prependHeightRef.current = scrollRef.current?.scrollHeight ?? 0;
     isPrependRef.current = true;
     try {
@@ -512,10 +478,7 @@ export function DiscordFeed() {
   }, [searchQ, searchOpen]);
 
   function handleSent(msg: Message) {
-    setMessages(prev => {
-      if (prev.some(m=>m.id===msg.id)) return prev;
-      return [...prev, msg];
-    });
+    setMessages(prev => { if (prev.some(m=>m.id===msg.id)) return prev; return [...prev, msg]; });
     prevIdRef.current = msg.id;
     setTimeout(() => { if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; }, 50);
   }
@@ -549,8 +512,6 @@ export function DiscordFeed() {
   return (
     <>
       <div style={{position:"fixed",top:"56px",right:0,bottom:0,width:"360px",zIndex:200,display:"flex",flexDirection:"column",backgroundColor:"hsl(var(--surface))",borderLeft:"1px solid hsl(var(--surface-border))",transform:open?"translateX(0)":"translateX(100%)",transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",boxShadow:open?"-8px 0 32px rgba(10,20,40,0.22)":"none"}}>
-
-        {/* Header */}
         <div style={{height:"44px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:"1px solid hsl(var(--surface-border))",backgroundColor:"hsl(var(--nav-bg))"}}>
           <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.053a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.026c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
@@ -569,8 +530,6 @@ export function DiscordFeed() {
             </button>
           </div>
         </div>
-
-        {/* Search bar */}
         {searchOpen && (
           <div style={{padding:"8px 12px",borderBottom:"1px solid hsl(var(--surface-border))",backgroundColor:"hsl(var(--surface-raised))",display:"flex",flexDirection:"column",gap:"4px"}}>
             <div style={{display:"flex",alignItems:"center",gap:"8px",backgroundColor:"hsl(var(--surface))",border:"1px solid hsl(var(--surface-border))",padding:"5px 10px"}}>
@@ -584,16 +543,12 @@ export function DiscordFeed() {
             {!searchLoading&&searchResults!==null&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",letterSpacing:"0.08em"}}>{searchErr?<span style={{color:"hsl(var(--destructive))"}}>{searchErr}</span>:`${searchResults.length} result${searchResults.length!==1?"s":""} of ${searchTotal}`}</div>}
           </div>
         )}
-
-        {/* Intent gap warning */}
         {intentGap && !searchOpen && (
           <div style={{padding:"7px 14px",backgroundColor:"rgba(196,98,45,0.08)",borderBottom:"1px solid rgba(196,98,45,0.2)",display:"flex",alignItems:"flex-start",gap:"8px"}}>
             <span style={{fontSize:"13px",flexShrink:0,marginTop:"1px"}}>⚠️</span>
             <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:"11px",color:"hsl(var(--muted-foreground))",lineHeight:1.45}}>Some messages are hidden. Enable <strong>Message Content Intent</strong>: Discord Developer Portal → Bot → Privileged Gateway Intents.</div>
           </div>
         )}
-
-        {/* Feed */}
         <div ref={scrollRef} style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:"4px 0 8px",display:"flex",flexDirection:"column"}}>
           {loading&&!messages.length&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",flex:1,fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",letterSpacing:"0.08em"}}>Loading…</div>}
           {error&&<div style={{margin:"12px 14px",padding:"10px 12px",backgroundColor:"rgba(220,38,38,0.06)",border:"1px solid rgba(220,38,38,0.18)",fontFamily:"'DM Sans',sans-serif",fontSize:"12px",lineHeight:1.5,color:"hsl(var(--destructive))"}}>{error}</div>}
@@ -611,12 +566,9 @@ export function DiscordFeed() {
             return <MsgRow key={item.msg.id} msg={item.msg} isSearch={inSearch}/>;
           })}
         </div>
-
         {!searchOpen && <MessageInput onSent={handleSent}/>}
       </div>
-
       {open&&<div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:199,backgroundColor:"rgba(10,20,40,0.2)"}}/>}
-
       {!open&&(
         <button onClick={()=>setOpen(true)} aria-label="Open Discord feed" style={{position:"fixed",bottom:"24px",right:"24px",zIndex:201,width:"46px",height:"46px",borderRadius:"0px",backgroundColor:"#1B3C6E",border:"1px solid rgba(248,246,241,0.25)",boxShadow:"0 3px 14px rgba(27,60,110,0.6)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",padding:0}}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.053a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.026c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" fill="#F8F6F1"/></svg>
