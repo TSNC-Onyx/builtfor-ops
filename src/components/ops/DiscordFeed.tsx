@@ -5,8 +5,20 @@ const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const POLL_MS = 15_000;
 const HEADERS = { "apikey": ANON_KEY, "Authorization": `Bearer ${ANON_KEY}` };
 
+// ─── Emoji data ────────────────────────────────────────────────────────────────
+const EMOJI_CATEGORIES: { label: string; icon: string; emojis: string[] }[] = [
+  { label: "Smileys", icon: "😊", emojis: ["😀","😃","😄","😁","😆","😅","🤣","😂","🙂","😉","😊","😇","🥰","😍","🤩","😘","😗","😚","😙","😋","😛","😜","🤪","😝","🤑","🤗","🤔","🤐","😐","😑","😶","😏","😒","🙄","😬","😌","😔","😪","😴","😷","🤒","🤕","🤢","🤧","🥵","🥶","😵","🤯","😎","🥳","🤓","🧐","😤","😠","😡","🤬","😈","👿","💀","☠️","💩","🤡","👹","👺","👻","👽","👾","🤖"] },
+  { label: "People", icon: "👋", emojis: ["👋","🤚","🖐️","✋","🖖","🤙","👌","✌️","🤞","🤟","🤘","👈","👉","👆","👇","👍","👎","✊","👊","🤛","🤜","👏","🙌","🤝","🙏","💪","🦾","🤜","🤲","👐","🫶","❤️‍🔥","🫀","🧠","👀","👁️","👅","👂","🦻","🫁","🦴","🦷","🦶","🦵","💄","💋","👄","🫦"] },
+  { label: "Hearts", icon: "❤️", emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","❤️‍🔥","❤️‍🩹","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉️","✡️","🔯","🛐","⛎","♈","♉","♊","♋","♌","♍","♎","♏","♐","♑","♒","♓","🆔","⚛️","🈴","🆚","💯","🔤","🔡","🔢","🔣","🔠"] },
+  { label: "Animals", icon: "🐶", emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🦆","🦅","🦉","🦇","🐺","🐗","🦄","🐝","🦋","🐛","🐌","🐞","🐜","🦟","🦗","🕷️","🐢","🐍","🦎","🦕","🦖","🐙","🦑","🦐","🦀","🐡","🐬","🐳","🦈","🐊","🦏","🦛","🦒","🦓","🐘","🦬","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊️","🐇","🦔","🐿️","🦫","🦦","🦥","🐁","🐀","🐿️"] },
+  { label: "Food", icon: "🍕", emojis: ["🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🥑","🍆","🥔","🥕","🌽","🌶️","🥒","🥬","🧅","🧄","🥜","🌰","🍞","🥐","🥖","🥨","🧀","🥚","🍳","🧈","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🌮","🌯","🥙","🧆","🥗","🥘","🫕","🍱","🍣","🍤","🍙","🍚","🍛","🍜","🍝","🍠","🍢","🍡","🍧","🍨","🍦","🥧","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","☕","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🥃","🍸","🍹","🧉","🍾"] },
+  { label: "Activities", icon: "⚽", emojis: ["⚽","🏀","🏈","⚾","🥎","🏐","🏉","🎾","🏸","🥊","🥋","⛳","🎣","🤿","🎿","🛷","🥌","🏒","🏑","🏓","🏸","🥅","🏋️","🤼","🤸","🤺","⛹️","🤾","🏇","🏊","🏄","🏆","🥇","🥈","🥉","🎖️","🎗️","🎪","🎭","🎨","🎬","🎤","🎧","🎼","🎵","🎶","🎹","🥁","🎷","🎺","🎸","🎻","🎲","🎯","🎳","🎮","🎰","🧩","🎴","🀄","🎭","🃏","🪄","🎪"] },
+  { label: "Objects", icon: "💡", emojis: ["💡","🔦","🕯️","💎","💍","👑","🔮","🪄","🎩","🎁","🎀","🎊","🎉","🎈","🧨","✨","🎆","🎇","📱","💻","🖥️","⌨️","🖱️","📷","📸","📹","🎥","📞","☎️","📺","📻","🧭","⏱️","⏰","🕰️","⌛","📡","🔋","🔌","💼","🧳","🔑","🗝️","🔓","🔒","🔧","🔨","⚒️","🛠️","⛏️","🔩","🧱","💰","💸","💳","📚","📖","📝","✏️","🖊️","🖋️","📌","📍","🗑️","📫","📬","📭","📮","🗳️","📥","📤","📧","💬","💭","🗯️","🔔","🔕","🔕"] },
+  { label: "Symbols", icon: "✅", emojis: ["✅","❌","⭕","🆘","🚫","⚠️","🔞","🔥","💯","🔝","🔛","🔜","🔚","🆙","🆕","🆓","🆗","🔴","🟠","🟡","🟢","🔵","🟣","⚫","⚪","🟤","❗","❓","⁉️","💱","♻️","🔱","⚜️","🏧","✨","🎵","🎶","💤","🔞","📵","🚯","🚱","🚳","🚭","🔇","📴","🈳","🈶","🈚","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🅾️","🆑","🆒","🆕"] },
+];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Attachment { url: string; proxyUrl: string; contentType: string | null; filename: string; width: number | null; height: number | null; size?: number | null; }
+interface Attachment { url: string; proxyUrl: string; contentType: string | null; filename: string; width: number | null; height: number | null; }
 interface EmbedField { name: string; value: string; inline: boolean; }
 interface Embed { type: string; url: string | null; title: string | null; description: string | null; color: number | null; image: { url: string } | null; thumbnail: { url: string } | null; video: { url: string } | null; author: { name: string; url: string | null } | null; footer: { text: string } | null; fields: EmbedField[]; }
 interface Sticker { id: string; name: string; formatType: number; url: string | null; }
@@ -25,7 +37,7 @@ function formatDate(iso: string) {
 }
 function isSameDay(a: string, b: string) { return new Date(a).toDateString() === new Date(b).toDateString(); }
 
-// Sequential token-based Discord markdown parser
+// Sequential Discord markdown parser
 function parseMarkdown(raw: string): React.ReactNode[] {
   const out: React.ReactNode[] = [];
   let s = raw, k = 0;
@@ -42,7 +54,10 @@ function parseMarkdown(raw: string): React.ReactNode[] {
     const cemo = s.match(/^<a?:(\w+):(\d+)>/); if (cemo) { const anim = s.startsWith("<a:"); out.push(<img key={k++} src={`https://cdn.discordapp.com/emojis/${cemo[2]}.${anim ? "gif" : "png"}?size=24`} alt={`:${cemo[1]}:`} style={{ width: 20, height: 20, verticalAlign: "middle", display: "inline" }} />); s = s.slice(cemo[0].length); continue; }
     const ment = s.match(/^<[@#][!&]?\d+>/); if (ment) { out.push(<span key={k++} style={{ backgroundColor: "rgba(88,101,242,0.18)", color: "#8ea1e1", padding: "0 2px", borderRadius: "2px" }}>{ment[0].startsWith("<#") ? "#channel" : "@user"}</span>); s = s.slice(ment[0].length); continue; }
     const urlM = s.match(/^https?:\/\/[^\s<>"]+/); if (urlM) { out.push(<a key={k++} href={urlM[0]} target="_blank" rel="noopener noreferrer" style={{ color: "#5865F2", textDecoration: "underline", wordBreak: "break-all" }}>{urlM[0]}</a>); s = s.slice(urlM[0].length); continue; }
-    const plain = s.match(/^[^*_~|`<>h\n]+/) ?? [s[0]]; out.push(<span key={k++}>{plain[0]}</span>); s = s.slice(plain[0].length);
+    // Consume plain text: everything except markdown trigger chars and newline
+    const plain = s.match(/^[^*_~|`<>\n]+/) ?? [s[0]];
+    out.push(<span key={k++}>{plain[0]}</span>);
+    s = s.slice(plain[0].length);
   }
   return out;
 }
@@ -135,12 +150,55 @@ function DateDivider({ label }: { label: string }) {
   );
 }
 
-// ─── Message input ────────────────────────────────────────────────────────────
+// ─── Emoji Picker ─────────────────────────────────────────────────────────────
+function EmojiPicker({ onSelect, onClose }: { onSelect: (e: string) => void; onClose: () => void }) {
+  const [cat, setCat] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [onClose]);
+
+  return (
+    <div ref={ref} style={{ position: "absolute", bottom: "calc(100% + 6px)", right: 0, width: "300px", backgroundColor: "hsl(var(--surface))", border: "1px solid hsl(var(--surface-border))", boxShadow: "0 -4px 20px rgba(10,20,40,0.18)", zIndex: 10, display: "flex", flexDirection: "column" }}>
+      {/* Category tabs */}
+      <div style={{ display: "flex", borderBottom: "1px solid hsl(var(--surface-border))", padding: "4px 6px", gap: "2px", overflowX: "auto" }}>
+        {EMOJI_CATEGORIES.map((c, i) => (
+          <button key={i} onClick={() => setCat(i)} title={c.label} style={{ width: "28px", height: "28px", display: "flex", alignItems: "center", justifyContent: "center", background: cat === i ? "hsl(var(--surface-raised))" : "none", border: cat === i ? "1px solid hsl(var(--surface-border))" : "1px solid transparent", cursor: "pointer", fontSize: "15px", flexShrink: 0, borderRadius: "2px" }}>
+            {c.icon}
+          </button>
+        ))}
+      </div>
+      {/* Category label */}
+      <div style={{ padding: "4px 10px 2px", fontFamily: "'DM Mono',monospace", fontSize: "9px", letterSpacing: "0.1em", textTransform: "uppercase", color: "hsl(var(--muted-foreground))" }}>
+        {EMOJI_CATEGORIES[cat].label}
+      </div>
+      {/* Emoji grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: "1px", padding: "4px 6px 8px", maxHeight: "200px", overflowY: "auto" }}>
+        {EMOJI_CATEGORIES[cat].emojis.map((emoji, i) => (
+          <button key={i} onClick={() => { onSelect(emoji); onClose(); }} title={emoji} style={{ width: "32px", height: "32px", display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", fontSize: "18px", borderRadius: "2px", transition: "background 0.1s" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = "hsl(var(--surface-raised))"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = ""; }}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Message Input ────────────────────────────────────────────────────────────
 function MessageInput({ onSent }: { onSent: (msg: Message) => void }) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [showEmoji, setShowEmoji] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   async function send() {
     const content = value.trim();
@@ -154,10 +212,7 @@ function MessageInput({ onSent }: { onSent: (msg: Message) => void }) {
         body: JSON.stringify({ content }),
       });
       const body = await res.json();
-      if (!res.ok) {
-        setSendError(body?.error ?? `Failed to send (${res.status})`);
-        return;
-      }
+      if (!res.ok) { setSendError(body?.error ?? `Failed to send (${res.status})`); return; }
       setValue("");
       if (textareaRef.current) { textareaRef.current.style.height = "auto"; }
       if (body.message) onSent(body.message);
@@ -166,6 +221,21 @@ function MessageInput({ onSent }: { onSent: (msg: Message) => void }) {
     } finally {
       setSending(false);
     }
+  }
+
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current;
+    if (!el) { setValue((v) => v + emoji); return; }
+    const start = el.selectionStart ?? value.length;
+    const end = el.selectionEnd ?? value.length;
+    const next = value.slice(0, start) + emoji + value.slice(end);
+    setValue(next);
+    // Restore cursor after emoji
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -180,11 +250,19 @@ function MessageInput({ onSent }: { onSent: (msg: Message) => void }) {
   }
 
   return (
-    <div style={{ flexShrink: 0, padding: "8px 12px 10px", borderTop: "1px solid hsl(var(--surface-border))", backgroundColor: "hsl(var(--surface))" }}>
-      {sendError && (
-        <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: "11px", color: "hsl(var(--destructive))", marginBottom: "5px", lineHeight: 1.4 }}>{sendError}</div>
-      )}
-      <div style={{ display: "flex", alignItems: "flex-end", gap: "8px", backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))", padding: "6px 10px" }}>
+    <div ref={containerRef} style={{ flexShrink: 0, padding: "8px 12px 10px", borderTop: "1px solid hsl(var(--surface-border))", backgroundColor: "hsl(var(--surface))", position: "relative" }}>
+      {showEmoji && <EmojiPicker onSelect={insertEmoji} onClose={() => setShowEmoji(false)} />}
+      {sendError && <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: "11px", color: "hsl(var(--destructive))", marginBottom: "5px", lineHeight: 1.4 }}>{sendError}</div>}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))", padding: "6px 8px" }}>
+        {/* Emoji button */}
+        <button
+          onClick={() => setShowEmoji((s) => !s)}
+          aria-label="Emoji picker"
+          title="Emoji"
+          style={{ width: "26px", height: "26px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: showEmoji ? "hsl(var(--surface-border))" : "none", border: "none", cursor: "pointer", padding: 0, fontSize: "16px", opacity: 0.75, borderRadius: "2px" }}
+        >
+          😊
+        </button>
         <textarea
           ref={textareaRef}
           value={value}
@@ -195,19 +273,20 @@ function MessageInput({ onSent }: { onSent: (msg: Message) => void }) {
           rows={1}
           style={{ flex: 1, resize: "none", background: "none", border: "none", outline: "none", fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "hsl(var(--foreground))", lineHeight: 1.45, minHeight: "20px", maxHeight: "120px", overflowY: "auto", padding: 0, opacity: sending ? 0.5 : 1 }}
         />
+        {/* Send */}
         <button
           onClick={send}
           disabled={!value.trim() || sending}
-          aria-label="Send message"
-          style={{ width: "28px", height: "28px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: value.trim() && !sending ? "#5865F2" : "transparent", border: "none", borderRadius: "2px", cursor: value.trim() && !sending ? "pointer" : "default", padding: 0, transition: "background-color 0.12s ease", opacity: !value.trim() || sending ? 0.35 : 1 }}
+          aria-label="Send"
+          style={{ width: "26px", height: "26px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: value.trim() && !sending ? "#5865F2" : "transparent", border: "none", borderRadius: "2px", cursor: value.trim() && !sending ? "pointer" : "default", padding: 0, transition: "background-color 0.12s ease", opacity: !value.trim() || sending ? 0.3 : 1 }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M22 2L11 13" stroke="#F8F6F1" strokeWidth="2" strokeLinecap="square"/>
-            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#F8F6F1" strokeWidth="2" strokeLinecap="square" strokeLinejoin="miter"/>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path d="M22 2L11 13" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square"/>
+            <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="#F8F6F1" strokeWidth="2.2" strokeLinecap="square" strokeLinejoin="miter"/>
           </svg>
         </button>
       </div>
-      <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "9px", color: "hsl(var(--muted-foreground))", opacity: 0.45, marginTop: "4px", textAlign: "right" }}>Enter to send · Shift+Enter for new line</div>
+      <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "9px", color: "hsl(var(--muted-foreground))", opacity: 0.4, marginTop: "3px", textAlign: "right" }}>Enter · Shift+Enter for newline</div>
     </div>
   );
 }
@@ -219,6 +298,8 @@ export function DiscordFeed() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newCount, setNewCount] = useState(0);
+  // Track if we've seen messages with missing content from other users (intent gap)
+  const [intentGap, setIntentGap] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | null>(null);
   const hasFetchedRef = useRef(false);
@@ -237,6 +318,9 @@ export function DiscordFeed() {
         return;
       }
       const msgs: Message[] = body.messages ?? [];
+      // Detect MESSAGE_CONTENT intent gap: type-0 messages with no content, no attachments, no embeds
+      const hasGap = msgs.some((m) => m.type === 0 && !m.content && !m.attachments.length && !m.embeds.length && !m.stickers.length);
+      if (hasGap) setIntentGap(true);
       if (msgs.length > 0) {
         const latest = msgs[msgs.length - 1].id;
         if (prevIdRef.current && latest !== prevIdRef.current && !open) setNewCount((n) => n + 1);
@@ -249,7 +333,6 @@ export function DiscordFeed() {
 
   function handleSent(msg: Message) {
     setMessages((prev) => {
-      // Avoid duplicate if polling picks it up first
       if (prev.some((m) => m.id === msg.id)) return prev;
       return [...prev, msg];
     });
@@ -305,6 +388,16 @@ export function DiscordFeed() {
           </div>
         </div>
 
+        {/* Intent gap warning */}
+        {intentGap && (
+          <div style={{ padding: "7px 14px", backgroundColor: "rgba(196,98,45,0.08)", borderBottom: "1px solid rgba(196,98,45,0.2)", display: "flex", alignItems: "flex-start", gap: "8px" }}>
+            <span style={{ fontSize: "13px", flexShrink: 0, marginTop: "1px" }}>⚠️</span>
+            <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: "11px", color: "hsl(var(--muted-foreground))", lineHeight: 1.45 }}>
+              Some messages have no visible content. Enable <strong>Message Content Intent</strong> in the Discord Developer Portal → your app → Bot → Privileged Gateway Intents.
+            </div>
+          </div>
+        )}
+
         {/* Feed */}
         <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "4px 0 8px", display: "flex", flexDirection: "column" }}>
           {loading && !messages.length && <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, fontFamily: "'DM Mono',monospace", fontSize: "11px", color: "hsl(var(--muted-foreground))", letterSpacing: "0.08em" }}>Loading…</div>}
@@ -314,13 +407,10 @@ export function DiscordFeed() {
           {items.map((item, idx) => {
             if (item.type === "div") return <DateDivider key={`d${idx}`} label={item.label} />;
             const { msg } = item;
-            // System message (member join, pin, etc.)
             if (msg.type !== 0 && msg.type !== 19 && msg.type !== 20 && msg.type !== 23) {
               return (
                 <div key={msg.id} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "3px 14px" }}>
-                  <div style={{ width: 32, flexShrink: 0, display: "flex", justifyContent: "center" }}>
-                    <span style={{ fontSize: "14px" }}>🔔</span>
-                  </div>
+                  <div style={{ width: 32, flexShrink: 0, display: "flex", justifyContent: "center" }}><span style={{ fontSize: "14px" }}>🔔</span></div>
                   <span style={{ fontFamily: "'DM Sans',sans-serif", fontSize: "12px", color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
                     <strong>{msg.author}</strong>{msg.systemLabel ? ` ${msg.systemLabel}` : ""}
                     <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "9px", marginLeft: "6px", opacity: 0.5 }}>{formatTime(msg.timestamp)}</span>
@@ -341,11 +431,13 @@ export function DiscordFeed() {
                     </span>
                   </div>
                   {msg.replyTo && <ReplyBanner reply={msg.replyTo} />}
-                  {msg.content && (
+                  {msg.content ? (
                     <p style={{ margin: 0, fontFamily: "'DM Sans',sans-serif", fontSize: "13px", color: "hsl(var(--foreground))", lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
                       {parseMarkdown(msg.content)}
                     </p>
-                  )}
+                  ) : (!msg.attachments.length && !msg.embeds.length && !msg.stickers.length) ? (
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "10px", color: "hsl(var(--muted-foreground))", opacity: 0.35, fontStyle: "italic" }}>[content hidden — enable Message Content Intent]</span>
+                  ) : null}
                   <AttachmentsBlock attachments={msg.attachments} />
                   <EmbedsBlock embeds={msg.embeds} />
                   <StickersBlock stickers={msg.stickers} />
