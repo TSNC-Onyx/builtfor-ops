@@ -1,29 +1,29 @@
 // ============================================================
 // STRIPE SERVICE — presentation-layer boundary
-// All Stripe operations are initiated here.
+// All Stripe operations initiated here.
 // No UI component may call Stripe or mutate billing state directly.
 //
-// Architecture notes:
-//   - All Stripe config (publishable key, payment links) is stored
-//     in public.app_config, keyed by category 'stripe_config' and
-//     'stripe_payment_links'. Never in env vars.
-//   - Mutations (cancel, pause, resume) invoke Supabase Edge
-//     Functions which hold the secret key server-side.
-//   - This service is a typed boundary; Edge Functions are
-//     TODO stubs marked explicitly below.
+// Architecture:
+//   - All Stripe config stored in public.app_config
+//   - Payment method reads → get-payment-method Edge Function
+//   - Customer portal (payment method update) → create-customer-portal-session Edge Function
+//   - Subscription mutations → manage-subscription Edge Function
+//   - Secret key never touches the frontend
 // ============================================================
 
 import { supabase } from "@/lib/supabase";
-import type { BillingEvent, Subscription, SetupFeePayload, SubscriptionActionPayload } from "@/types/billing";
+import type {
+  BillingEvent,
+  Subscription,
+  SetupFeePayload,
+  SubscriptionActionPayload,
+  PaymentMethodSummary,
+} from "@/types/billing";
 
-// --------------- APP CONFIG CACHE (from app_config table) ---------------
+// --------------- APP CONFIG CACHE ---------------
 
 const _configCache: Record<string, string> = {};
 
-/**
- * Resolves any app_config value by key.
- * Cached in-memory after first fetch — one DB read per key per session.
- */
 async function resolveConfig(key: string, fallback = ""): Promise<string> {
   if (_configCache[key]) return _configCache[key];
   const { data, error } = await supabase
@@ -36,40 +36,35 @@ async function resolveConfig(key: string, fallback = ""): Promise<string> {
   return data.value;
 }
 
-/**
- * Returns the Stripe publishable key from app_config.
- * Label in DB: 'Stripe Publishable Key — Live'
- * Key:         'stripe_publishable_key'
- */
 export async function getStripePublishableKey(): Promise<string> {
   return resolveConfig("stripe_publishable_key", "");
 }
 
-// --------------- QUERIES (read-only, safe from frontend) ---------------
+// --------------- QUERIES ---------------
 
-/** Fetch all billing_events for a given client, newest first. */
+/** Fetch billing_events for a client ordered by occurred_at desc */
 export async function fetchBillingEvents(clientId: string): Promise<BillingEvent[]> {
   const { data, error } = await supabase
     .from("billing_events")
     .select("*")
     .eq("client_id", clientId)
-    .order("created_at", { ascending: false });
+    .order("occurred_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as BillingEvent[];
 }
 
-/** Fetch all billing_events across all clients (ops dashboard view). */
+/** Fetch all billing_events across all clients */
 export async function fetchAllBillingEvents(): Promise<BillingEvent[]> {
   const { data, error } = await supabase
     .from("billing_events")
     .select("*")
-    .order("created_at", { ascending: false })
+    .order("occurred_at", { ascending: false })
     .limit(500);
   if (error) throw error;
   return (data ?? []) as BillingEvent[];
 }
 
-/** Fetch subscription record for a given client. */
+/** Fetch subscription for a client */
 export async function fetchSubscription(clientId: string): Promise<Subscription | null> {
   const { data, error } = await supabase
     .from("subscriptions")
@@ -80,7 +75,7 @@ export async function fetchSubscription(clientId: string): Promise<Subscription 
   return data as Subscription | null;
 }
 
-/** Fetch all subscriptions (ops view). */
+/** Fetch all subscriptions */
 export async function fetchAllSubscriptions(): Promise<Subscription[]> {
   const { data, error } = await supabase
     .from("subscriptions")
@@ -90,20 +85,61 @@ export async function fetchAllSubscriptions(): Promise<Subscription[]> {
   return (data ?? []) as Subscription[];
 }
 
-// --------------- PAYMENT LINK (setup fee) ---------------
+// --------------- PAYMENT METHOD (via Edge Function) ---------------
 
 /**
- * Resolves and builds the Stripe Payment Link URL for a client's setup fee.
- * Base link is read from public.app_config by pricing_tier key.
- * Appends prefilled_email and client_reference_id for reconciliation.
+ * Fetches the default payment method (card on file) for a Stripe customer.
+ * Calls the get-payment-method Edge Function which holds the secret key.
+ *
+ * TODO: Deploy `get-payment-method` Edge Function:
+ *   1. Receive stripe_customer_id
+ *   2. Call stripe.customers.retrieve(id, { expand: ['invoice_settings.default_payment_method'] })
+ *   3. Return { brand, last4, exp_month, exp_year, cardholder_name }
  */
+export async function fetchPaymentMethod(
+  stripeCustomerId: string
+): Promise<PaymentMethodSummary | null> {
+  const { data, error } = await supabase.functions.invoke("get-payment-method", {
+    body: { stripe_customer_id: stripeCustomerId },
+  });
+  if (error) {
+    // Edge function not yet deployed — return null so UI shows scaffold state
+    return null;
+  }
+  return data as PaymentMethodSummary | null;
+}
+
+// --------------- CUSTOMER PORTAL (payment method update) ---------------
+
+/**
+ * Generates a Stripe Customer Portal session URL.
+ * The portal is Stripe-hosted — card data never touches BuiltFor servers.
+ * Calls the create-customer-portal-session Edge Function.
+ *
+ * TODO: Deploy `create-customer-portal-session` Edge Function:
+ *   1. Authenticate caller
+ *   2. Receive stripe_customer_id and return_url
+ *   3. Call stripe.billingPortal.sessions.create({ customer, return_url })
+ *   4. Return { url }
+ */
+export async function createCustomerPortalSession(
+  stripeCustomerId: string,
+  returnUrl: string
+): Promise<{ url: string } | null> {
+  const { data, error } = await supabase.functions.invoke("create-customer-portal-session", {
+    body: { stripe_customer_id: stripeCustomerId, return_url: returnUrl },
+  });
+  if (error) return null;
+  return data as { url: string };
+}
+
+// --------------- PAYMENT LINK ---------------
+
 export async function buildSetupFeePaymentLink(payload: SetupFeePayload): Promise<string> {
   const configKey =
-    payload.pricing_tier === "founding"
-      ? "stripe_payment_link_founding"
-      : payload.pricing_tier === "tlcc"
-      ? "stripe_payment_link_tlcc"
-      : "stripe_payment_link_standard";
+    payload.pricing_tier === "founding" ? "stripe_payment_link_founding"
+    : payload.pricing_tier === "tlcc"    ? "stripe_payment_link_tlcc"
+    : "stripe_payment_link_standard";
 
   const baseLink = await resolveConfig(configKey, "https://dashboard.stripe.com/payments");
 
@@ -117,37 +153,19 @@ export async function buildSetupFeePaymentLink(payload: SetupFeePayload): Promis
   }
 }
 
-// --------------- SUBSCRIPTION MUTATIONS (via Edge Function) ---------------
+// --------------- SUBSCRIPTION MUTATIONS ---------------
 
-/**
- * Invokes a Supabase Edge Function to perform subscription mutations.
- *
- * TODO (Edge Function): Deploy `manage-subscription` edge function.
- *   It must:
- *     1. Authenticate the caller via Supabase session
- *     2. Resolve the Stripe secret key from Vault (never from env on client)
- *     3. Call the appropriate Stripe API (cancel, pause, resume, update)
- *     4. Write audit record to billing_events
- *     5. Update subscriptions table status
- *     6. Return canonical success/error shape
- *
- * DEMO SCAFFOLD — marked explicit:
- *   Until the edge function is deployed, this throws a descriptive error
- *   rather than silently failing or performing the action client-side.
- */
 export async function manageSubscription(
   payload: SubscriptionActionPayload
 ): Promise<{ ok: boolean; message: string }> {
   const { data, error } = await supabase.functions.invoke("manage-subscription", {
     body: payload,
   });
-
   if (error) {
     const isNotDeployed =
       error.message?.includes("404") ||
       error.message?.includes("not found") ||
       error.message?.includes("FunctionsFetchError");
-
     if (isNotDeployed) {
       return {
         ok: false,
@@ -159,6 +177,5 @@ export async function manageSubscription(
     }
     return { ok: false, message: error.message };
   }
-
   return { ok: true, message: data?.message ?? "Action completed." };
 }
