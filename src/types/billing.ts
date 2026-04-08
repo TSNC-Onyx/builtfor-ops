@@ -72,7 +72,7 @@ export interface ClientBillingView {
   business_name: string;
   owner_name: string;
   email: string;
-  pricing_tier: "founding" | "standard";
+  pricing_tier: "founding" | "standard" | "tlcc";
   subscription: Subscription | null;
   billing_events: BillingEvent[];
   total_collected_cents: number;
@@ -85,7 +85,7 @@ export interface SetupFeePayload {
   business_name: string;
   email: string;
   amount_cents: number;
-  pricing_tier: "founding" | "standard";
+  pricing_tier: "founding" | "standard" | "tlcc";
 }
 
 /** Payload for subscription management actions */
@@ -101,10 +101,18 @@ export interface SubscriptionActionPayload {
 export const PRICING = {
   founding_setup_cents: 249900,
   standard_setup_cents: 299900,
+  tlcc_setup_cents: 249900,       // TLCC matches founding rate
   founding_monthly_cents: 30000,
   standard_monthly_cents: 40000,
+  tlcc_monthly_cents: 30000,      // TLCC matches founding monthly
   off_season_monthly_cents: 9900,
 } as const;
+
+/** Map tier to setup fee amount in cents */
+export function setupFeeCents(tier: "founding" | "standard" | "tlcc"): number {
+  if (tier === "founding" || tier === "tlcc") return PRICING.founding_setup_cents;
+  return PRICING.standard_setup_cents;
+}
 
 export function formatCents(cents: number): string {
   return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;

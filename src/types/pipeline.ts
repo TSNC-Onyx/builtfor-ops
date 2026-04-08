@@ -8,7 +8,9 @@ export type IndustryVertical =
   | "landscaping" | "hvac" | "plumbing" | "electrical" | "pest_control" | "cleaning" | "other";
 
 export type ClientStatus = "onboarding" | "active" | "at_risk" | "churned" | "paused";
-export type PricingTier = "founding" | "standard";
+
+/** Mirrors the pricing_tier DB enum — must stay in sync with Supabase */
+export type PricingTier = "founding" | "standard" | "tlcc";
 
 export interface Prospect {
   id: string;
@@ -70,6 +72,19 @@ export const SOURCE_LABELS: Record<string, string> = {
   referral: "Referral",
   trade_show: "Trade Show",
   inbound: "Inbound",
+};
+
+export const TIER_LABELS: Record<PricingTier, string> = {
+  founding: "Founding Member",
+  standard: "Standard Member",
+  tlcc: "TLCC Member",
+};
+
+/** Maps pricing tier to its app_config key for payment link resolution */
+export const TIER_CONFIG_KEY: Record<PricingTier, string> = {
+  founding: "stripe_payment_link_founding",
+  standard: "stripe_payment_link_standard",
+  tlcc: "stripe_payment_link_tlcc",
 };
 
 export const FOUNDING_SPOTS = 5;
