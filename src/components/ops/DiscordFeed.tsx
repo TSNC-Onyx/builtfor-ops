@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from "react";
 
 const EDGE_URL =
   "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-messages";
+// Publishable anon key — safe to include in client bundle
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzZGN4dm15d2ltcWZwZGtldmR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0ODc0MDcsImV4cCI6MjA5MTA2MzQwN30.UXYnT3R2R28JicoAjRnhHMKsUvpgkqYICJRM0jsLCmg";
 const POLL_INTERVAL = 15_000;
 
 interface Attachment {
@@ -63,7 +66,6 @@ function Avatar({ author, avatarUrl }: { author: string; avatarUrl: string | nul
 
 function MessageContent({ content }: { content: string }) {
   if (!content) return null;
-  // Render URLs as clickable links, preserve rest as text
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const parts = content.split(urlRegex);
   return (
@@ -86,10 +88,7 @@ function AttachmentBlock({ attachments }: { attachments: Attachment[] }) {
     <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
       {attachments.map((a, i) =>
         isImageUrl(a.url, a.contentType) ? (
-          <img
-            key={i}
-            src={a.url}
-            alt={a.filename}
+          <img key={i} src={a.url} alt={a.filename}
             style={{ maxWidth: "100%", maxHeight: "200px", objectFit: "contain", display: "block", border: "1px solid hsl(var(--surface-border))" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
@@ -143,7 +142,12 @@ export function DiscordFeed() {
     if (!quiet) setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${EDGE_URL}?limit=50`);
+      const res = await fetch(`${EDGE_URL}?limit=50`, {
+        headers: {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: { messages: Message[] } = await res.json();
       const msgs = data.messages ?? [];
