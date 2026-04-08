@@ -4,9 +4,10 @@ import { OpsShell } from "@/components/ops/OpsShell";
 import { MetricsBar } from "@/components/ops/MetricsBar";
 import { useProspects } from "@/hooks/useProspects";
 import { useClients, type ClientWithSubscription } from "@/hooks/useClients";
+import { usePortalInvite } from "@/hooks/usePortalInvite";
 import { formatDate, displayPhone } from "@/lib/utils";
-import type { ClientStatus, PricingTier, IndustryVertical } from "@/types/pipeline";
-import { verticalLabel, TIER_LABELS, TIER_OPTIONS } from "@/types/pipeline";
+import type { ClientStatus, PricingTier, IndustryVertical, PortalInviteStatus } from "@/types/pipeline";
+import { verticalLabel, TIER_LABELS, TIER_OPTIONS, PORTAL_INVITE_CONFIG } from "@/types/pipeline";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 import { buildSetupFeePaymentLink } from "@/lib/stripe.service";
 import { setupFeeCents, formatCents } from "@/types/billing";
@@ -49,6 +50,8 @@ function clientEffectiveRate(c: ClientWithSubscription): number {
 export default function Clients() {
   const { data: clients = [], isLoading, isError } = useClients();
   const { data: prospects = [] } = useProspects();
+  const { sendInvite, loading: inviteLoading } = usePortalInvite();
+
   const [search, setSearch]               = useState("");
   const [filterStatus, setFilterStatus]   = useState<ClientStatus | "all">("all");
   const [filterTier, setFilterTier]       = useState<PricingTier | "all">("all");
@@ -57,12 +60,14 @@ export default function Clients() {
   const [selectedClient, setSelectedClient] = useState<ClientWithSubscription | null>(null);
   const [selectedTier, setSelectedTier]   = useState<PricingTier | null>(null);
   const [linkLoading, setLinkLoading]     = useState(false);
+  const [inviteConfirm, setInviteConfirm] = useState(false);
 
   const resetPage = () => setPage(1);
 
   function openClient(c: ClientWithSubscription) {
     setSelectedClient(c);
     setSelectedTier(c.pricing_tier);
+    setInviteConfirm(false);
   }
 
   const filtered = useMemo(() => {
@@ -126,6 +131,29 @@ export default function Clients() {
     }
   }
 
+  async function handleSendPortalInvite(c: ClientWithSubscription) {
+    if (!inviteConfirm) {
+      setInviteConfirm(true);
+      return;
+    }
+    setInviteConfirm(false);
+    const result = await sendInvite(c.id);
+    if (result.ok) {
+      toast.success(`Portal invite sent to ${result.email}`);
+      // Optimistically update the selected client reference so the panel
+      // reflects 'invited' without needing to re-open it
+      setSelectedClient(prev =>
+        prev ? { ...prev, portal_invite_status: "invited", portal_invite_sent_at: new Date().toISOString() } : prev
+      );
+    } else {
+      if (result.error === "Client has already signed up") {
+        toast.info("This client has already completed portal signup.");
+      } else {
+        toast.error(`Invite failed \u2014 ${result.error}`);
+      }
+    }
+  }
+
   const activeTier: PricingTier = selectedTier ?? selectedClient?.pricing_tier ?? "standard";
 
   return (
@@ -182,23 +210,34 @@ export default function Clients() {
       )}
 
       <div className="px-4 md:px-6 pb-3 space-y-1 mt-1">
-        {paginated.map(c => (
-          <div key={c.id} onClick={() => openClient(c)}
-            className="flex items-center gap-3 md:gap-5 px-4 py-3 cursor-pointer transition-opacity active:opacity-70 hover:opacity-80"
-            style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="font-body text-[13px] md:text-[14px] font-semibold truncate" style={{ color: "hsl(var(--foreground))" }}>{c.business_name}</div>
-              <div className="font-body text-[12px] truncate" style={{ color: "hsl(var(--foreground))", fontWeight: 400 }}>{c.owner_name}</div>
-              {c.email && <div className="hidden sm:block font-body text-[11px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{c.email}</div>}
+        {paginated.map(c => {
+          const inviteCfg = PORTAL_INVITE_CONFIG[c.portal_invite_status ?? "not_invited"];
+          return (
+            <div key={c.id} onClick={() => openClient(c)}
+              className="flex items-center gap-3 md:gap-5 px-4 py-3 cursor-pointer transition-opacity active:opacity-70 hover:opacity-80"
+              style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-body text-[13px] md:text-[14px] font-semibold truncate" style={{ color: "hsl(var(--foreground))" }}>{c.business_name}</div>
+                <div className="font-body text-[12px] truncate" style={{ color: "hsl(var(--foreground))", fontWeight: 400 }}>{c.owner_name}</div>
+                {c.email && <div className="hidden sm:block font-body text-[11px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{c.email}</div>}
+              </div>
+              <span className="font-mono text-[10px] tracking-[0.1em] uppercase px-2 py-1 flex-shrink-0" style={{ border: `1px solid ${statusColor(c.status)}`, color: statusColor(c.status) }}>{formatEnum(c.status)}</span>
+              {/* Portal invite status badge — shown on md+ screens */}
+              <span
+                className="hidden md:inline font-mono text-[9px] tracking-[0.08em] uppercase px-2 py-1 flex-shrink-0"
+                style={{ border: `1px solid ${inviteCfg.color}66`, color: inviteCfg.color }}
+                title={`Portal: ${inviteCfg.label}`}
+              >
+                {inviteCfg.label}
+              </span>
+              <span className="hidden sm:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{verticalLabel(c.vertical, c.vertical_custom)}</span>
+              <span className="hidden md:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{TIER_LABELS[c.pricing_tier]}</span>
+              <span className="hidden lg:inline font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>{formatDate(c.created_at)}</span>
+              <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>\u2192</span>
             </div>
-            <span className="font-mono text-[10px] tracking-[0.1em] uppercase px-2 py-1 flex-shrink-0" style={{ border: `1px solid ${statusColor(c.status)}`, color: statusColor(c.status) }}>{formatEnum(c.status)}</span>
-            <span className="hidden sm:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{verticalLabel(c.vertical, c.vertical_custom)}</span>
-            <span className="hidden md:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{TIER_LABELS[c.pricing_tier]}</span>
-            <span className="hidden lg:inline font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>{formatDate(c.created_at)}</span>
-            <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>\u2192</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {totalPages > 1 && (
@@ -225,9 +264,19 @@ export default function Clients() {
       )}
 
       {selectedClient && (
-        <DrillDownPanel title={selectedClient.business_name} onClose={() => { setSelectedClient(null); setSelectedTier(null); }}>
+        <DrillDownPanel title={selectedClient.business_name} onClose={() => { setSelectedClient(null); setSelectedTier(null); setInviteConfirm(false); }}>
           <div className="space-y-4">
 
+            {/* ── Portal Account Invite ─────────────────────────────────── */}
+            <PortalInvitePanel
+              client={selectedClient}
+              inviteLoading={inviteLoading}
+              inviteConfirm={inviteConfirm}
+              onSend={() => handleSendPortalInvite(selectedClient)}
+              onCancelConfirm={() => setInviteConfirm(false)}
+            />
+
+            {/* ── Setup Fee Payment Link ────────────────────────────────── */}
             <div style={{ backgroundColor: `${NAVY}12`, border: `1px solid ${NAVY}33`, padding: "14px 16px" }}>
               <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Setup Fee Payment Link</div>
               <div className="mb-3">
@@ -306,6 +355,9 @@ export default function Clients() {
               </DetailRow>
               <DetailRow label="State"   value={selectedClient.state || "\u2014"} />
               <DetailRow label="Started" value={formatDate(selectedClient.created_at)} />
+              {selectedClient.portal_invite_sent_at && (
+                <DetailRow label="Invited" value={formatDate(selectedClient.portal_invite_sent_at)} />
+              )}
               {selectedClient.notes && <DetailRow label="Notes" value={selectedClient.notes} />}
             </div>
 
@@ -315,6 +367,95 @@ export default function Clients() {
     </OpsShell>
   );
 }
+
+// ─── Portal Invite Panel ──────────────────────────────────────────────────────
+
+const RUST  = "hsl(20,63%,47%)";
+const GREEN = "hsl(145,50%,40%)";
+const AMBER = "hsl(38,90%,50%)";
+
+function PortalInvitePanel({
+  client, inviteLoading, inviteConfirm, onSend, onCancelConfirm,
+}: {
+  client: ClientWithSubscription;
+  inviteLoading: boolean;
+  inviteConfirm: boolean;
+  onSend: () => void;
+  onCancelConfirm: () => void;
+}) {
+  const status: PortalInviteStatus = client.portal_invite_status ?? "not_invited";
+  const cfg = PORTAL_INVITE_CONFIG[status];
+  const isSignedUp = status === "signed_up";
+  const isInvited  = status === "invited";
+
+  return (
+    <div style={{ backgroundColor: `${cfg.color}10`, border: `1px solid ${cfg.color}44`, padding: "14px 16px" }}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-mono text-[9px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>Portal Account</div>
+        <span
+          className="font-mono text-[9px] tracking-[0.1em] uppercase px-2 py-1"
+          style={{ border: `1px solid ${cfg.color}`, color: cfg.color }}
+        >
+          {cfg.label}
+        </span>
+      </div>
+
+      {isSignedUp && (
+        <p className="font-mono text-[10px] tracking-[0.06em]" style={{ color: GREEN }}>
+          \u2713 Client has created their portal account.
+        </p>
+      )}
+
+      {!isSignedUp && (
+        <>
+          {isInvited && client.portal_invite_sent_at && (
+            <p className="font-mono text-[9px] tracking-[0.06em] mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>
+              Invite sent {formatDate(client.portal_invite_sent_at)} \u00b7 awaiting signup
+            </p>
+          )}
+
+          {inviteConfirm ? (
+            <div style={{ border: `1px solid ${AMBER}66`, padding: "10px 12px", backgroundColor: `${AMBER}0f` }}>
+              <p className="font-mono text-[9px] tracking-[0.08em] mb-3" style={{ color: AMBER }}>
+                {isInvited
+                  ? `Resend invite to ${client.email}?`
+                  : `Send portal signup link to ${client.email}?`}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={onSend} disabled={inviteLoading}
+                  className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
+                  style={{ backgroundColor: AMBER, color: "hsl(0,0%,10%)", border: "none", cursor: inviteLoading ? "not-allowed" : "pointer" }}
+                >{inviteLoading ? "Sending\u2026" : "Confirm Send"}</button>
+                <button onClick={onCancelConfirm} disabled={inviteLoading}
+                  className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
+                  style={{ border: `1px solid hsl(var(--border))`, color: "hsl(var(--muted-foreground))", background: "none", cursor: "pointer" }}
+                >Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={onSend} disabled={inviteLoading}
+              className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
+              style={{
+                backgroundColor: isInvited ? "transparent" : "hsl(var(--navy))",
+                color: isInvited ? AMBER : "hsl(38,33%,92%)",
+                border: isInvited ? `1px solid ${AMBER}` : "none",
+                cursor: inviteLoading ? "not-allowed" : "pointer",
+              }}
+            >
+              {inviteLoading ? "Sending\u2026" : isInvited ? "Resend Invite" : "Send Portal Invite"}
+            </button>
+          )}
+
+          <p className="font-mono text-[9px] tracking-[0.06em] mt-2" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
+            Sends a magic link to {client.email} \u00b7 client sets their password on first login
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Shared sub-components ────────────────────────────────────────────────────
 
 function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (v: string) => void; options: string[]; label: string }) {
   return (

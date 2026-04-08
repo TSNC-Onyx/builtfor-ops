@@ -12,6 +12,9 @@ export type ClientStatus = "onboarding" | "active" | "at_risk" | "churned" | "pa
 /** Mirrors the pricing_tier DB enum — must stay in sync with Supabase */
 export type PricingTier = "founding" | "standard" | "tlcc";
 
+/** Mirrors portal_invite_status DB enum */
+export type PortalInviteStatus = "not_invited" | "invited" | "signed_up";
+
 export interface Prospect {
   id: string;
   full_name: string;
@@ -50,6 +53,10 @@ export interface Client {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  /** Portal account invite/signup state — mirrors portal_invite_status DB enum */
+  portal_invite_status: PortalInviteStatus;
+  portal_invite_sent_at: string | null;
+  portal_user_id: string | null;
 }
 
 export const STAGE_ORDER: ProspectStage[] = [
@@ -100,3 +107,10 @@ export function verticalLabel(vertical: IndustryVertical, custom: string | null 
   if (vertical === "other") return custom?.trim() || "Other";
   return vertical.replace("_", " ");
 }
+
+/** Display config for portal invite status badges */
+export const PORTAL_INVITE_CONFIG: Record<PortalInviteStatus, { label: string; color: string }> = {
+  not_invited: { label: "Not Invited",  color: "hsl(216,21%,62%)" },
+  invited:     { label: "Invite Sent",  color: "hsl(38,90%,50%)" },
+  signed_up:   { label: "Signed Up",    color: "hsl(145,50%,40%)" },
+};
