@@ -9,6 +9,7 @@ import type { Session } from "@supabase/supabase-js";
 import Dashboard from "./pages/Dashboard";
 import Pipeline from "./pages/Pipeline";
 import Clients from "./pages/Clients";
+import Billing from "./pages/Billing";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import { DiscordFeed } from "./components/ops/DiscordFeed";
@@ -59,7 +60,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
-      {/* DiscordFeed mounted here — outside routing tree, outside all stacking contexts */}
       <DiscordFeed />
     </>
   );
@@ -76,6 +76,7 @@ const App = () => (
               <Route path="/" element={<Dashboard />} />
               <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/clients" element={<Clients />} />
+              <Route path="/billing" element={<Billing />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthGate>
