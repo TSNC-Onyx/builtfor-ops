@@ -4,8 +4,9 @@
 // No UI component may call Stripe or mutate billing state directly.
 //
 // Architecture notes:
-//   - Payment Links are stored in public.app_config (service role read)
-//     keyed by stripe_payment_link_<tier>. Never in env vars.
+//   - All Stripe config (publishable key, payment links) is stored
+//     in public.app_config, keyed by category 'stripe_config' and
+//     'stripe_payment_links'. Never in env vars.
 //   - Mutations (cancel, pause, resume) invoke Supabase Edge
 //     Functions which hold the secret key server-side.
 //   - This service is a typed boundary; Edge Functions are
@@ -15,21 +16,33 @@
 import { supabase } from "@/lib/supabase";
 import type { BillingEvent, Subscription, SetupFeePayload, SubscriptionActionPayload } from "@/types/billing";
 
-// --------------- PAYMENT LINK CONFIG (from app_config table) ---------------
+// --------------- APP CONFIG CACHE (from app_config table) ---------------
 
-const _linkCache: Record<string, string> = {};
+const _configCache: Record<string, string> = {};
 
-/** Resolves a payment link URL from app_config by key. Cached after first fetch. */
-async function resolvePaymentLink(key: string): Promise<string> {
-  if (_linkCache[key]) return _linkCache[key];
+/**
+ * Resolves any app_config value by key.
+ * Cached in-memory after first fetch — one DB read per key per session.
+ */
+async function resolveConfig(key: string, fallback = ""): Promise<string> {
+  if (_configCache[key]) return _configCache[key];
   const { data, error } = await supabase
     .from("app_config")
     .select("value")
     .eq("key", key)
     .maybeSingle();
-  if (error || !data?.value) return "https://dashboard.stripe.com/payments";
-  _linkCache[key] = data.value;
+  if (error || !data?.value) return fallback;
+  _configCache[key] = data.value;
   return data.value;
+}
+
+/**
+ * Returns the Stripe publishable key from app_config.
+ * Label in DB: 'Stripe Publishable Key — Live'
+ * Key:         'stripe_publishable_key'
+ */
+export async function getStripePublishableKey(): Promise<string> {
+  return resolveConfig("stripe_publishable_key", "");
 }
 
 // --------------- QUERIES (read-only, safe from frontend) ---------------
@@ -92,7 +105,7 @@ export async function buildSetupFeePaymentLink(payload: SetupFeePayload): Promis
       ? "stripe_payment_link_tlcc"
       : "stripe_payment_link_standard";
 
-  const baseLink = await resolvePaymentLink(configKey);
+  const baseLink = await resolveConfig(configKey, "https://dashboard.stripe.com/payments");
 
   try {
     const url = new URL(baseLink);
