@@ -18,6 +18,9 @@ export function useClients() {
         .from("clients")
         .select(`
           *,
+          portal_invite_status,
+          portal_invite_sent_at,
+          portal_user_id,
           subscriptions (*)
         `)
         .order("created_at", { ascending: false });
