@@ -4,17 +4,35 @@ const EDGE_URL =
   "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-messages";
 const POLL_INTERVAL = 15_000;
 
+interface Attachment {
+  url: string;
+  contentType?: string;
+  filename: string;
+}
+
+interface Reaction {
+  count: number;
+  emoji: string;
+}
+
 interface Message {
   id: string;
   content: string;
   timestamp: string;
   author: string;
   avatarUrl: string | null;
+  attachments: Attachment[];
+  reactions: Reaction[];
 }
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function isImageUrl(url: string, contentType?: string): boolean {
+  if (contentType) return contentType.startsWith("image/");
+  return /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url);
 }
 
 function Avatar({ author, avatarUrl }: { author: string; avatarUrl: string | null }) {
@@ -43,6 +61,74 @@ function Avatar({ author, avatarUrl }: { author: string; avatarUrl: string | nul
   );
 }
 
+function MessageContent({ content }: { content: string }) {
+  if (!content) return null;
+  // Render URLs as clickable links, preserve rest as text
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = content.split(urlRegex);
+  return (
+    <p style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: "13px", color: "hsl(var(--foreground))", opacity: 0.85, lineHeight: 1.5, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
+      {parts.map((part, i) =>
+        urlRegex.test(part) ? (
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+            style={{ color: "#5865F2", textDecoration: "underline", textDecorationColor: "rgba(88,101,242,0.4)" }}>
+            {part}
+          </a>
+        ) : part
+      )}
+    </p>
+  );
+}
+
+function AttachmentBlock({ attachments }: { attachments: Attachment[] }) {
+  if (!attachments?.length) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+      {attachments.map((a, i) =>
+        isImageUrl(a.url, a.contentType) ? (
+          <img
+            key={i}
+            src={a.url}
+            alt={a.filename}
+            style={{ maxWidth: "100%", maxHeight: "200px", objectFit: "contain", display: "block", border: "1px solid hsl(var(--surface-border))" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+            style={{ fontFamily: "'DM Mono', monospace", fontSize: "10px", color: "#5865F2", textDecoration: "underline", letterSpacing: "0.04em" }}>
+            {a.filename}
+          </a>
+        )
+      )}
+    </div>
+  );
+}
+
+function ReactionsBlock({ reactions }: { reactions: Reaction[] }) {
+  if (!reactions?.length) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px" }}>
+      {reactions.map((r, i) => (
+        <span key={i} style={{
+          display: "inline-flex", alignItems: "center", gap: "3px",
+          padding: "1px 6px",
+          backgroundColor: "hsl(var(--surface-raised))",
+          border: "1px solid hsl(var(--surface-border))",
+          fontFamily: "'DM Sans', sans-serif", fontSize: "11px",
+          color: "hsl(var(--foreground))",
+        }}>
+          {r.emoji.startsWith("http") ? (
+            <img src={r.emoji} alt="emoji" width={14} height={14} style={{ display: "inline-block" }} />
+          ) : (
+            <span>{r.emoji}</span>
+          )}
+          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "9px", opacity: 0.7 }}>{r.count}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export function DiscordFeed() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -57,7 +143,7 @@ export function DiscordFeed() {
     if (!quiet) setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${EDGE_URL}?limit=30`);
+      const res = await fetch(`${EDGE_URL}?limit=50`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: { messages: Message[] } = await res.json();
       const msgs = data.messages ?? [];
@@ -181,9 +267,9 @@ export function DiscordFeed() {
                   <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: "12px", fontWeight: 600, color: "hsl(var(--foreground))", whiteSpace: "nowrap" }}>{msg.author}</span>
                   <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "9px", color: "hsl(var(--muted-foreground))", opacity: 0.7, letterSpacing: "0.06em", flexShrink: 0 }}>{formatTime(msg.timestamp)}</span>
                 </div>
-                <p style={{ margin: 0, fontFamily: "'DM Sans', sans-serif", fontSize: "13px", color: "hsl(var(--foreground))", opacity: 0.85, lineHeight: 1.45, wordBreak: "break-word", whiteSpace: "pre-wrap" }}>
-                  {msg.content || <span style={{ opacity: 0.35, fontStyle: "italic" }}>[attachment]</span>}
-                </p>
+                <MessageContent content={msg.content} />
+                <AttachmentBlock attachments={msg.attachments} />
+                <ReactionsBlock reactions={msg.reactions} />
               </div>
             </div>
           ))}
@@ -197,20 +283,15 @@ export function DiscordFeed() {
           aria-label="Open Discord feed"
           style={{
             position: "fixed",
-            bottom: "24px",
-            right: "24px",
+            bottom: "24px", right: "24px",
             zIndex: 201,
-            width: "44px",
-            height: "44px",
+            width: "44px", height: "44px",
             borderRadius: "0px",
             backgroundColor: "#1B3C6E",
             border: "1px solid rgba(248,246,241,0.3)",
             boxShadow: "0 2px 12px rgba(27,60,110,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            padding: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", padding: 0,
           }}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
