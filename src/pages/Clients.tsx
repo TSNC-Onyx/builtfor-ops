@@ -17,17 +17,19 @@ const PAGE_SIZE = 15;
 const STATUS_OPTIONS: ClientStatus[] = ["onboarding", "active", "at_risk", "churned", "paused"];
 const VERTICAL_OPTIONS: IndustryVertical[] = ["landscaping", "hvac", "plumbing", "electrical", "pest_control", "cleaning", "other"];
 
+// ─── Brand colour tokens (single source of truth for this file) ───────────────
 const RUST  = "hsl(20,63%,47%)";
 const NAVY  = "hsl(213,58%,27%)";
 const GREEN = "hsl(145,50%,40%)";
+const AMBER = "hsl(38,90%,50%)";
 const STEEL = "hsl(216,21%,62%)";
 
 const STATUS_COLOR: Record<string, string> = {
   onboarding: RUST, active: NAVY,
-  at_risk: "hsl(38,90%,50%)", churned: STEEL, paused: STEEL,
+  at_risk: AMBER, churned: STEEL, paused: STEEL,
 };
 const HEALTH_COLOR: Record<string, string> = {
-  healthy: GREEN, needs_attention: "hsl(38,90%,50%)", at_risk: RUST, critical: "hsl(0,72%,50%)",
+  healthy: GREEN, needs_attention: AMBER, at_risk: RUST, critical: "hsl(0,72%,50%)",
 };
 
 function statusColor(s: string): string { return STATUS_COLOR[s] ?? STEEL; }
@@ -140,8 +142,8 @@ export default function Clients() {
     const result = await sendInvite(c.id);
     if (result.ok) {
       toast.success(`Portal invite sent to ${result.email}`);
-      // Optimistically update the selected client reference so the panel
-      // reflects 'invited' without needing to re-open it
+      // Optimistically update the selected client so the panel reflects
+      // 'invited' without waiting for the next refetch.
       setSelectedClient(prev =>
         prev ? { ...prev, portal_invite_status: "invited", portal_invite_sent_at: new Date().toISOString() } : prev
       );
@@ -179,8 +181,8 @@ export default function Clients() {
             color: "hsl(var(--foreground))", outline: "none",
           }}
         />
-        <FilterSelect value={filterStatus}   onChange={v => { setFilterStatus(v as ClientStatus | "all");     resetPage(); }} options={[("all" as const), ...STATUS_OPTIONS]}   label="Status" />
-        <FilterSelect value={filterTier}     onChange={v => { setFilterTier(v as PricingTier | "all");         resetPage(); }} options={[("all" as const), ...TIER_OPTIONS]}     label="Tier" />
+        <FilterSelect value={filterStatus}   onChange={v => { setFilterStatus(v as ClientStatus | "all");      resetPage(); }} options={[("all" as const), ...STATUS_OPTIONS]}   label="Status" />
+        <FilterSelect value={filterTier}     onChange={v => { setFilterTier(v as PricingTier | "all");          resetPage(); }} options={[("all" as const), ...TIER_OPTIONS]}     label="Tier" />
         <FilterSelect value={filterVertical} onChange={v => { setFilterVertical(v as IndustryVertical | "all"); resetPage(); }} options={[("all" as const), ...VERTICAL_OPTIONS]} label="Vertical" />
         {(search || filterStatus !== "all" || filterTier !== "all" || filterVertical !== "all") && (
           <button
@@ -198,8 +200,16 @@ export default function Clients() {
         </span>
       </div>
 
-      {isLoading && <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading clients\u2026</div>}
-      {isError   && <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>Failed to load clients \u2014 check connection and refresh.</div>}
+      {isLoading && (
+        <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>
+          Loading clients\u2026
+        </div>
+      )}
+      {isError && (
+        <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>
+          Failed to load clients \u2014 check connection and refresh.
+        </div>
+      )}
 
       {!isLoading && !isError && filtered.length === 0 && (
         <div className="mx-4 md:mx-6 my-6 p-10 text-center" style={{ border: "1px dashed hsl(var(--border))" }}>
@@ -222,8 +232,12 @@ export default function Clients() {
                 <div className="font-body text-[12px] truncate" style={{ color: "hsl(var(--foreground))", fontWeight: 400 }}>{c.owner_name}</div>
                 {c.email && <div className="hidden sm:block font-body text-[11px] truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{c.email}</div>}
               </div>
-              <span className="font-mono text-[10px] tracking-[0.1em] uppercase px-2 py-1 flex-shrink-0" style={{ border: `1px solid ${statusColor(c.status)}`, color: statusColor(c.status) }}>{formatEnum(c.status)}</span>
-              {/* Portal invite status badge — shown on md+ screens */}
+              {/* Client status */}
+              <span className="font-mono text-[10px] tracking-[0.1em] uppercase px-2 py-1 flex-shrink-0"
+                style={{ border: `1px solid ${statusColor(c.status)}`, color: statusColor(c.status) }}>
+                {formatEnum(c.status)}
+              </span>
+              {/* Portal invite status badge — md+ only */}
               <span
                 className="hidden md:inline font-mono text-[9px] tracking-[0.08em] uppercase px-2 py-1 flex-shrink-0"
                 style={{ border: `1px solid ${inviteCfg.color}66`, color: inviteCfg.color }}
@@ -231,9 +245,15 @@ export default function Clients() {
               >
                 {inviteCfg.label}
               </span>
-              <span className="hidden sm:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{verticalLabel(c.vertical, c.vertical_custom)}</span>
-              <span className="hidden md:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>{TIER_LABELS[c.pricing_tier]}</span>
-              <span className="hidden lg:inline font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>{formatDate(c.created_at)}</span>
+              <span className="hidden sm:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {verticalLabel(c.vertical, c.vertical_custom)}
+              </span>
+              <span className="hidden md:inline font-mono text-[10px] tracking-[0.08em] uppercase flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>
+                {TIER_LABELS[c.pricing_tier]}
+              </span>
+              <span className="hidden lg:inline font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>
+                {formatDate(c.created_at)}
+              </span>
               <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>\u2192</span>
             </div>
           );
@@ -264,10 +284,13 @@ export default function Clients() {
       )}
 
       {selectedClient && (
-        <DrillDownPanel title={selectedClient.business_name} onClose={() => { setSelectedClient(null); setSelectedTier(null); setInviteConfirm(false); }}>
+        <DrillDownPanel
+          title={selectedClient.business_name}
+          onClose={() => { setSelectedClient(null); setSelectedTier(null); setInviteConfirm(false); }}
+        >
           <div className="space-y-4">
 
-            {/* ── Portal Account Invite ─────────────────────────────────── */}
+            {/* ── Portal Account ────────────────────────────────────────── */}
             <PortalInvitePanel
               client={selectedClient}
               inviteLoading={inviteLoading}
@@ -317,6 +340,7 @@ export default function Clients() {
               </p>
             </div>
 
+            {/* ── Client Details ────────────────────────────────────────── */}
             <div className="space-y-3">
               <DetailRow label="Status">
                 <span className="font-mono text-[10px] tracking-[0.1em] uppercase px-2 py-1"
@@ -329,8 +353,7 @@ export default function Clients() {
                   {formatEnum(selectedClient.health_signal || "healthy")}
                 </span>
               </DetailRow>
-              {/* MRR read from subscription effective_rate_cents — never hardcoded */}
-              <DetailRow label="MRR" value={clientMrrLabel(selectedClient)} />
+              <DetailRow label="MRR"      value={clientMrrLabel(selectedClient)} />
               <DetailRow label="Vertical" value={verticalLabel(selectedClient.vertical, selectedClient.vertical_custom)} />
               <DetailRow label="Tier"     value={TIER_LABELS[selectedClient.pricing_tier]} />
             </div>
@@ -370,10 +393,6 @@ export default function Clients() {
 
 // ─── Portal Invite Panel ──────────────────────────────────────────────────────
 
-const RUST  = "hsl(20,63%,47%)";
-const GREEN = "hsl(145,50%,40%)";
-const AMBER = "hsl(38,90%,50%)";
-
 function PortalInvitePanel({
   client, inviteLoading, inviteConfirm, onSend, onCancelConfirm,
 }: {
@@ -384,7 +403,7 @@ function PortalInvitePanel({
   onCancelConfirm: () => void;
 }) {
   const status: PortalInviteStatus = client.portal_invite_status ?? "not_invited";
-  const cfg = PORTAL_INVITE_CONFIG[status];
+  const cfg      = PORTAL_INVITE_CONFIG[status];
   const isSignedUp = status === "signed_up";
   const isInvited  = status === "invited";
 
@@ -392,10 +411,8 @@ function PortalInvitePanel({
     <div style={{ backgroundColor: `${cfg.color}10`, border: `1px solid ${cfg.color}44`, padding: "14px 16px" }}>
       <div className="flex items-center justify-between mb-3">
         <div className="font-mono text-[9px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>Portal Account</div>
-        <span
-          className="font-mono text-[9px] tracking-[0.1em] uppercase px-2 py-1"
-          style={{ border: `1px solid ${cfg.color}`, color: cfg.color }}
-        >
+        <span className="font-mono text-[9px] tracking-[0.1em] uppercase px-2 py-1"
+          style={{ border: `1px solid ${cfg.color}`, color: cfg.color }}>
           {cfg.label}
         </span>
       </div>
@@ -428,7 +445,7 @@ function PortalInvitePanel({
                 >{inviteLoading ? "Sending\u2026" : "Confirm Send"}</button>
                 <button onClick={onCancelConfirm} disabled={inviteLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
-                  style={{ border: `1px solid hsl(var(--border))`, color: "hsl(var(--muted-foreground))", background: "none", cursor: "pointer" }}
+                  style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))", background: "none", cursor: "pointer" }}
                 >Cancel</button>
               </div>
             </div>
@@ -436,7 +453,7 @@ function PortalInvitePanel({
             <button onClick={onSend} disabled={inviteLoading}
               className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
               style={{
-                backgroundColor: isInvited ? "transparent" : "hsl(var(--navy))",
+                backgroundColor: isInvited ? "transparent" : NAVY,
                 color: isInvited ? AMBER : "hsl(38,33%,92%)",
                 border: isInvited ? `1px solid ${AMBER}` : "none",
                 cursor: inviteLoading ? "not-allowed" : "pointer",
@@ -457,7 +474,9 @@ function PortalInvitePanel({
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
 
-function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (v: string) => void; options: string[]; label: string }) {
+function FilterSelect({ value, onChange, options, label }: {
+  value: string; onChange: (v: string) => void; options: string[]; label: string;
+}) {
   return (
     <select value={value} onChange={e => onChange(e.target.value)}
       style={{
@@ -469,17 +488,21 @@ function FilterSelect({ value, onChange, options, label }: { value: string; onCh
       }}
     >
       <option value="all">All {label}</option>
-      {options.filter(o => o !== "all").map(o => <option key={o} value={o}>{o.replace(/_/g, " ")}</option>)}
+      {options.filter(o => o !== "all").map(o => (
+        <option key={o} value={o}>{o.replace(/_/g, " ")}</option>
+      ))}
     </select>
   );
 }
 
-function PagBtn({ label, active, disabled, onClick }: { label: string; active?: boolean; disabled?: boolean; onClick: () => void }) {
+function PagBtn({ label, active, disabled, onClick }: {
+  label: string; active?: boolean; disabled?: boolean; onClick: () => void;
+}) {
   return (
     <button onClick={onClick} disabled={disabled}
       className="font-mono text-[10px] tracking-[0.1em] px-2.5 py-1.5 transition-colors disabled:opacity-30"
       style={{
-        backgroundColor: active ? "hsl(var(--navy))" : "transparent",
+        backgroundColor: active ? NAVY : "transparent",
         color: active ? "hsl(var(--off-white))" : "hsl(var(--muted-foreground))",
         border: "1px solid hsl(var(--border))",
       }}
@@ -487,10 +510,15 @@ function PagBtn({ label, active, disabled, onClick }: { label: string; active?: 
   );
 }
 
-function DetailRow({ label, value, children }: { label: string; value?: string; children?: React.ReactNode }) {
+function DetailRow({ label, value, children }: {
+  label: string; value?: string; children?: React.ReactNode;
+}) {
   return (
     <div className="flex items-start gap-3">
-      <span className="font-mono text-[10px] tracking-[0.12em] uppercase w-20 flex-shrink-0 pt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</span>
+      <span className="font-mono text-[10px] tracking-[0.12em] uppercase w-20 flex-shrink-0 pt-0.5"
+        style={{ color: "hsl(var(--muted-foreground))" }}>
+        {label}
+      </span>
       {children ?? <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>{value}</span>}
     </div>
   );
