@@ -4,8 +4,8 @@
 // No UI component may call Stripe or mutate billing state directly.
 //
 // Architecture notes:
-//   - Frontend: Stripe.js (loaded via CDN in index.html) for
-//     Payment Links and Checkout redirect flows only.
+//   - Payment Links are stored in public.app_config (service role read)
+//     keyed by stripe_payment_link_<tier>. Never in env vars.
 //   - Mutations (cancel, pause, resume) invoke Supabase Edge
 //     Functions which hold the secret key server-side.
 //   - This service is a typed boundary; Edge Functions are
@@ -14,6 +14,23 @@
 
 import { supabase } from "@/lib/supabase";
 import type { BillingEvent, Subscription, SetupFeePayload, SubscriptionActionPayload } from "@/types/billing";
+
+// --------------- PAYMENT LINK CONFIG (from app_config table) ---------------
+
+const _linkCache: Record<string, string> = {};
+
+/** Resolves a payment link URL from app_config by key. Cached after first fetch. */
+async function resolvePaymentLink(key: string): Promise<string> {
+  if (_linkCache[key]) return _linkCache[key];
+  const { data, error } = await supabase
+    .from("app_config")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+  if (error || !data?.value) return "https://dashboard.stripe.com/payments";
+  _linkCache[key] = data.value;
+  return data.value;
+}
 
 // --------------- QUERIES (read-only, safe from frontend) ---------------
 
@@ -63,34 +80,28 @@ export async function fetchAllSubscriptions(): Promise<Subscription[]> {
 // --------------- PAYMENT LINK (setup fee) ---------------
 
 /**
- * Generates a Stripe Payment Link URL for the one-time setup fee.
- *
- * IMPLEMENTATION DIRECTION:
- *   - Payment Links are created in the Stripe Dashboard ahead of time
- *     (one per pricing tier) and stored as env vars or in a config table.
- *   - This function assembles the correct link + prefills client email
- *     via Stripe's `prefilled_email` query param.
- *   - No secret key needed on the frontend — the link itself is public.
- *
- * TODO (Phase 2): Replace static links with dynamic Checkout Session
- *   creation via Edge Function for per-client metadata tagging.
+ * Resolves and builds the Stripe Payment Link URL for a client's setup fee.
+ * Base link is read from public.app_config by pricing_tier key.
+ * Appends prefilled_email and client_reference_id for reconciliation.
  */
-export function buildSetupFeePaymentLink(payload: SetupFeePayload): string {
-  const baseLink =
+export async function buildSetupFeePaymentLink(payload: SetupFeePayload): Promise<string> {
+  const configKey =
     payload.pricing_tier === "founding"
-      ? import.meta.env.VITE_STRIPE_PAYMENT_LINK_FOUNDING ?? ""
-      : import.meta.env.VITE_STRIPE_PAYMENT_LINK_STANDARD ?? "";
+      ? "stripe_payment_link_founding"
+      : payload.pricing_tier === "tlcc"
+      ? "stripe_payment_link_tlcc"
+      : "stripe_payment_link_standard";
 
-  if (!baseLink) {
-    // Graceful degradation — opens Stripe dashboard for manual charge
-    return "https://dashboard.stripe.com/payments";
+  const baseLink = await resolvePaymentLink(configKey);
+
+  try {
+    const url = new URL(baseLink);
+    if (payload.email) url.searchParams.set("prefilled_email", payload.email);
+    url.searchParams.set("client_reference_id", payload.client_id);
+    return url.toString();
+  } catch {
+    return baseLink;
   }
-
-  const url = new URL(baseLink);
-  if (payload.email) url.searchParams.set("prefilled_email", payload.email);
-  // Attach client_id as client_reference_id via query param for webhook reconciliation
-  url.searchParams.set("client_reference_id", payload.client_id);
-  return url.toString();
 }
 
 // --------------- SUBSCRIPTION MUTATIONS (via Edge Function) ---------------
@@ -119,7 +130,6 @@ export async function manageSubscription(
   });
 
   if (error) {
-    // Edge function not yet deployed — surface as actionable message
     const isNotDeployed =
       error.message?.includes("404") ||
       error.message?.includes("not found") ||
