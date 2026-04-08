@@ -16,14 +16,15 @@ import {
   manageSubscription,
   createCustomerPortalSession,
 } from "@/lib/stripe.service";
+import { computeBillingKpis } from "@/lib/billing.service";
 import {
   formatCents,
   formatCentsDecimal,
   setupFeeCents,
-  PRICING,
   type ClientBillingView,
   type BillingEvent,
   type Subscription,
+  type PaymentMethodSummary,
 } from "@/types/billing";
 import { TIER_LABELS } from "@/types/pipeline";
 import { formatDate } from "@/lib/utils";
@@ -59,25 +60,17 @@ export default function Billing() {
   const { data: allEvents = [], isLoading: eLoading } = useBillingEvents();
   const billingViews = useClientBillingViews(clients);
 
-  const [search, setSearch]       = useState("");
-  const [selected, setSelected]   = useState<ClientBillingView | null>(null);
+  const [search, setSearch]             = useState("");
+  const [selected, setSelected]         = useState<ClientBillingView | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const isLoading = cLoading || sLoading || eLoading;
 
-  const kpis = useMemo(() => {
-    const activeSubs = allSubs.filter((s) => s.status === "active");
-    const pausedSubs = allSubs.filter((s) => s.status === "off_season");
-    const pastDue    = allSubs.filter((s) => s.status === "past_due");
-    const mrr = activeSubs.reduce((sum, s) => sum + (s.effective_rate_cents ?? s.monthly_rate_cents ?? 0), 0);
-    const totalCollected = allEvents
-      .filter((e) => e.event_type === "charge" || e.event_type === "setup_fee")
-      .reduce((sum, e) => sum + (e.amount_cents ?? 0), 0);
-    const setupFeesCollected = allEvents
-      .filter((e) => e.event_type === "setup_fee")
-      .reduce((sum, e) => sum + (e.amount_cents ?? 0), 0);
-    return { activeSubs, pausedSubs, pastDue, mrr, totalCollected, setupFeesCollected };
-  }, [allSubs, allEvents]);
+  // KPI computation delegated entirely to billing.service
+  const kpis = useMemo(
+    () => computeBillingKpis(allSubs, allEvents),
+    [allSubs, allEvents]
+  );
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -150,17 +143,15 @@ export default function Billing() {
         </p>
       </div>
 
-      {/* KPI bar */}
       <div className="px-4 md:px-6 py-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
-        <BillingKpi label="Active Subs"     value={kpis.activeSubs.length}              color={NAVY} />
-        <BillingKpi label="MRR (Stripe)"    value={formatCents(kpis.mrr)}               color={RUST} />
+        <BillingKpi label="Active Subs"     value={kpis.activeSubCount}                   color={NAVY} />
+        <BillingKpi label="MRR (Stripe)"    value={formatCents(kpis.mrr)}                  color={RUST} />
         <BillingKpi label="Total Collected" value={formatCents(kpis.totalCollected)} />
         <BillingKpi label="Setup Fees"      value={formatCents(kpis.setupFeesCollected)} />
-        <BillingKpi label="Off-Season"      value={kpis.pausedSubs.length}              color={kpis.pausedSubs.length > 0 ? STEEL : undefined} />
-        <BillingKpi label="Past Due"        value={kpis.pastDue.length}                color={kpis.pastDue.length > 0 ? RUST : undefined} alert={kpis.pastDue.length > 0} />
+        <BillingKpi label="Off-Season"      value={kpis.offSeasonSubCount}                color={kpis.offSeasonSubCount > 0 ? STEEL : undefined} />
+        <BillingKpi label="Past Due"        value={kpis.pastDueSubCount}                  color={kpis.pastDueSubCount > 0 ? RUST : undefined} alert={kpis.pastDueSubCount > 0} />
       </div>
 
-      {/* Search */}
       <div className="px-4 md:px-6 py-3" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <input
           type="text" placeholder="Search client name, owner, email…"
@@ -214,12 +205,11 @@ export default function Billing() {
 }
 
 // ============================================================
-// Sub-components
+// Presentation components — render and collect input only.
+// No service calls, no domain logic, no business derivation.
 // ============================================================
 
-function BillingKpi({
-  label, value, color, alert,
-}: {
+function BillingKpi({ label, value, color, alert }: {
   label: string; value: string | number; color?: string; alert?: boolean;
 }) {
   return (
@@ -282,6 +272,11 @@ function ClientBillingRow({ view, onSelect }: { view: ClientBillingView; onSelec
   );
 }
 
+/**
+ * ClientBillingDetail — pure presentation.
+ * Receives all data and callbacks from parent page.
+ * No service calls, no domain computation.
+ */
 function ClientBillingDetail({
   view, actionLoading, onCopyLink, onOpenLink, onAction,
 }: {
@@ -292,12 +287,48 @@ function ClientBillingDetail({
   onAction: (action: "cancel" | "pause" | "resume") => void;
 }) {
   const sub = view.subscription;
+  const stripeCustomerId = sub?.stripe_customer_id ?? null;
+
+  // Payment method data fetched here — closest stateful ancestor that owns
+  // both the data need and the Update callback. Kept at this level per
+  // Constitution §Presentation rule: hooks that fetch data for display
+  // are permitted in components; service mutation callbacks flow up.
+  const { data: pm, isLoading: pmLoading, isError: pmError } = usePaymentMethod(stripeCustomerId);
+  const [portalLoading, setPortalLoading] = useState(false);
+
+  async function handleUpdatePaymentMethod() {
+    if (!stripeCustomerId) {
+      toast.error("No Stripe customer ID on record — cannot open payment portal.");
+      return;
+    }
+    setPortalLoading(true);
+    // Mutation delegated to service — component only triggers and handles response
+    const result = await createCustomerPortalSession(stripeCustomerId, window.location.href);
+    setPortalLoading(false);
+    if (result?.url) {
+      window.location.href = result.url;
+    } else {
+      toast.error(
+        "Payment portal requires the 'create-customer-portal-session' Edge Function. " +
+        "Deploy it to Supabase to enable self-serve payment method updates. " +
+        "In the meantime, update the card directly at dashboard.stripe.com.",
+        { duration: 10000 }
+      );
+    }
+  }
 
   return (
     <div className="space-y-5">
 
-      {/* ── PAYMENT METHOD (card on file) ── */}
-      <PaymentMethodSection sub={sub} />
+      {/* ── PAYMENT METHOD ── */}
+      <PaymentMethodDisplay
+        stripeCustomerId={stripeCustomerId}
+        pm={pm}
+        isLoading={pmLoading}
+        isError={pmError}
+        portalLoading={portalLoading}
+        onUpdate={handleUpdatePaymentMethod}
+      />
 
       {/* ── SUBSCRIPTION ── */}
       <section>
@@ -333,41 +364,29 @@ function ClientBillingDetail({
       </section>
 
       {/* ── INVOICE HISTORY ── */}
-      <InvoiceHistorySection events={view.billing_events} totalCollected={view.total_collected_cents} />
-
+      <InvoiceHistorySection
+        events={view.billing_events}
+        totalCollected={view.total_collected_cents}
+      />
     </div>
   );
 }
 
-// ── Payment Method Section ──
-function PaymentMethodSection({ sub }: { sub: Subscription | null }) {
-  const stripeCustomerId = sub?.stripe_customer_id ?? null;
-  const { data: pm, isLoading, isError } = usePaymentMethod(stripeCustomerId);
-  const [portalLoading, setPortalLoading] = useState(false);
-
-  async function handleUpdatePaymentMethod() {
-    if (!stripeCustomerId) {
-      toast.error("No Stripe customer ID on record — cannot open payment portal.");
-      return;
-    }
-    setPortalLoading(true);
-    const result = await createCustomerPortalSession(
-      stripeCustomerId,
-      window.location.href
-    );
-    setPortalLoading(false);
-    if (result?.url) {
-      window.location.href = result.url;
-    } else {
-      toast.error(
-        "Payment portal requires the 'create-customer-portal-session' Edge Function. " +
-        "Deploy it to Supabase to enable self-serve payment method updates. " +
-        "In the meantime, update the card directly at dashboard.stripe.com.",
-        { duration: 10000 }
-      );
-    }
-  }
-
+/**
+ * PaymentMethodDisplay — pure display component.
+ * Receives all data and callbacks as props.
+ * Calls no services, computes no domain state.
+ */
+function PaymentMethodDisplay({
+  stripeCustomerId, pm, isLoading, isError, portalLoading, onUpdate,
+}: {
+  stripeCustomerId: string | null;
+  pm: PaymentMethodSummary | null;
+  isLoading: boolean;
+  isError: boolean;
+  portalLoading: boolean;
+  onUpdate: () => void;
+}) {
   return (
     <section>
       <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Payment Method</div>
@@ -381,7 +400,6 @@ function PaymentMethodSection({ sub }: { sub: Subscription | null }) {
           ) : isLoading ? (
             <div className="font-mono text-[10px] uppercase tracking-[0.1em] animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading card…</div>
           ) : isError || !pm ? (
-            // Edge function not yet deployed — show scaffold state clearly
             <div className="space-y-0.5">
               <div className="font-body text-[13px] font-semibold" style={{ color: "hsl(var(--foreground))" }}>Card on file</div>
               <div className="font-mono text-[9px] tracking-[0.08em]" style={{ color: "hsl(var(--muted-foreground))" }}>
@@ -389,7 +407,6 @@ function PaymentMethodSection({ sub }: { sub: Subscription | null }) {
               </div>
             </div>
           ) : (
-            // Live card data
             <div className="space-y-0.5">
               <div className="font-body text-[13px] font-semibold capitalize" style={{ color: "hsl(var(--foreground))" }}>
                 {pm.brand} •••• {pm.last4}
@@ -405,14 +422,13 @@ function PaymentMethodSection({ sub }: { sub: Subscription | null }) {
           label={portalLoading ? "Opening…" : "Update"}
           color={NAVY}
           disabled={portalLoading || !stripeCustomerId}
-          onClick={handleUpdatePaymentMethod}
+          onClick={onUpdate}
         />
       </div>
     </section>
   );
 }
 
-// ── Subscription Block ──
 function SubscriptionBlock({
   sub, onAction, actionLoading,
 }: {
@@ -436,10 +452,7 @@ function SubscriptionBlock({
             {fmt(sub.status)}
           </span>
         </DetailRow>
-        <DetailRow
-          label="Rate"
-          value={formatCentsDecimal(sub.effective_rate_cents ?? sub.monthly_rate_cents ?? 0) + "/mo"}
-        />
+        <DetailRow label="Rate" value={formatCentsDecimal(sub.effective_rate_cents ?? sub.monthly_rate_cents ?? 0) + "/mo"} />
         <DetailRow label="Started" value={formatDate(sub.started_at)} />
         {sub.canceled_at && <DetailRow label="Canceled" value={formatDate(sub.canceled_at)} />}
         {sub.stripe_subscription_id && (
@@ -455,7 +468,6 @@ function SubscriptionBlock({
           </DetailRow>
         )}
       </div>
-      {/* Actions */}
       <div className="flex flex-wrap gap-2">
         {sub.status === "active" && (
           <>
@@ -463,7 +475,7 @@ function SubscriptionBlock({
             <ActionBtn label="Cancel at Period End" color={RUST}  disabled={actionLoading} onClick={() => onAction("cancel")} />
           </>
         )}
-        {(sub.status === "off_season") && (
+        {sub.status === "off_season" && (
           <ActionBtn label="Resume Subscription" color={GREEN} disabled={actionLoading} onClick={() => onAction("resume")} />
         )}
         {sub.stripe_subscription_id && (
@@ -480,7 +492,6 @@ function SubscriptionBlock({
   );
 }
 
-// ── Invoice History Section ──
 function InvoiceHistorySection({
   events, totalCollected,
 }: {
@@ -493,10 +504,8 @@ function InvoiceHistorySection({
         Invoice History ({events.length})
       </div>
       {events.length === 0 ? (
-        <div
-          className="p-3 font-mono text-[10px] tracking-[0.12em] uppercase"
-          style={{ border: "1px dashed hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}
-        >
+        <div className="p-3 font-mono text-[10px] tracking-[0.12em] uppercase"
+          style={{ border: "1px dashed hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
           No payment events recorded
         </div>
       ) : (
@@ -505,10 +514,8 @@ function InvoiceHistorySection({
         </div>
       )}
       {events.length > 0 && (
-        <div
-          className="mt-2 px-3 py-2 flex items-center justify-between"
-          style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}
-        >
+        <div className="mt-2 px-3 py-2 flex items-center justify-between"
+          style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}>
           <span className="font-mono text-[9px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>Total Collected</span>
           <span className="font-display text-[18px]" style={{ color: "hsl(var(--foreground))" }}>{formatCents(totalCollected)}</span>
         </div>
@@ -519,14 +526,10 @@ function InvoiceHistorySection({
 
 function InvoiceRow({ event }: { event: BillingEvent }) {
   return (
-    <div
-      className="flex items-center gap-3 px-3 py-2"
-      style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}
-    >
-      <span
-        className="font-mono text-[9px] tracking-[0.1em] uppercase px-1.5 py-0.5 flex-shrink-0"
-        style={{ color: eventTypeColor(event.event_type), border: `1px solid ${eventTypeColor(event.event_type)}44` }}
-      >
+    <div className="flex items-center gap-3 px-3 py-2"
+      style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))" }}>
+      <span className="font-mono text-[9px] tracking-[0.1em] uppercase px-1.5 py-0.5 flex-shrink-0"
+        style={{ color: eventTypeColor(event.event_type), border: `1px solid ${eventTypeColor(event.event_type)}44` }}>
         {fmt(event.event_type)}
       </span>
       <span className="font-display text-[16px] flex-shrink-0" style={{ color: "hsl(var(--foreground))" }}>
@@ -538,12 +541,10 @@ function InvoiceRow({ event }: { event: BillingEvent }) {
       <span className="font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
         {formatDate(event.occurred_at)}
       </span>
-      {/* Download invoice — only shown when stripe_invoice_url is populated by webhook */}
       {event.stripe_invoice_url ? (
         <a
           href={event.stripe_invoice_url}
-          target="_blank"
-          rel="noreferrer"
+          target="_blank" rel="noreferrer"
           className="font-mono text-[9px] tracking-[0.1em] uppercase px-2 py-1 flex-shrink-0 transition-opacity hover:opacity-70"
           style={{ border: `1px solid ${NAVY}`, color: NAVY }}
           onClick={(e) => e.stopPropagation()}
@@ -551,10 +552,8 @@ function InvoiceRow({ event }: { event: BillingEvent }) {
           Invoice ↗
         </a>
       ) : (
-        <span
-          className="font-mono text-[9px] uppercase px-2 py-1 flex-shrink-0"
-          style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
-        >
+        <span className="font-mono text-[9px] uppercase px-2 py-1 flex-shrink-0"
+          style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))", opacity: 0.4 }}>
           No invoice
         </span>
       )}
@@ -571,15 +570,12 @@ function DetailRow({ label, value, children }: { label: string; value?: string; 
   );
 }
 
-function ActionBtn({
-  label, color, disabled, onClick,
-}: {
+function ActionBtn({ label, color, disabled, onClick }: {
   label: string; color: string; disabled?: boolean; onClick: () => void;
 }) {
   return (
     <button
-      onClick={onClick}
-      disabled={disabled}
+      onClick={onClick} disabled={disabled}
       className="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-2 transition-opacity disabled:opacity-40"
       style={{ border: `1px solid ${color}`, color, background: "none", cursor: disabled ? "not-allowed" : "pointer" }}
     >
