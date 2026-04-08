@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useProfile } from "@/hooks/useProfile";
 
 const EDGE_URL = "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-messages";
 const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzZGN4dm15d2ltcWZwZGtldmR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0ODc0MDcsImV4cCI6MjA5MTA2MzQwN30.UXYnT3R2R28JicoAjRnhHMKsUvpgkqYICJRM0jsLCmg";
@@ -36,7 +37,6 @@ const fmtDate = (iso: string) => {
   return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 };
 const sameDay = (a: string, b: string) => new Date(a).toDateString() === new Date(b).toDateString();
-// Match Tenor CDN GIF URLs (media.tenor.com, c.tenor.com, media1.tenor.com, etc.) and legacy GIPHY URLs
 const isGifOnly = (s: string) => {
   const t = s.trim();
   if (!t || t.includes(" ") || t.includes("\n")) return false;
@@ -122,7 +122,7 @@ function DateDivider({ label }: { label: string }) {
   return <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 14px",margin:"4px 0"}}><div style={{flex:1,height:"1px",backgroundColor:"hsl(var(--surface-border))"}}/><span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",letterSpacing:"0.12em",textTransform:"uppercase",color:"hsl(var(--muted-foreground))",whiteSpace:"nowrap"}}>{label}</span><div style={{flex:1,height:"1px",backgroundColor:"hsl(var(--surface-border))"}}/></div>;
 }
 
-// ─── Shared toolbar button ─────────────────────────────────────────────────────
+// ─── Shared toolbar button ────────────────────────────────────────────────────
 function ToolBtn({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
   return (
     <button onClick={onClick} title={title}
@@ -217,7 +217,7 @@ function GifPicker({ onSend, onClose }: { onSend:(url:string)=>void; onClose:()=
   </div>;
 }
 
-// ─── Message row ─────────────────────────────────────────────────────────────
+// ─── Message row ──────────────────────────────────────────────────────────────
 function MsgRow({ msg, isSearch }: { msg: Message; isSearch?: boolean }) {
   const isSystem = msg.type !== 0 && msg.type !== 19 && msg.type !== 20 && msg.type !== 23;
   if (isSystem) return (
@@ -258,7 +258,7 @@ function MsgRow({ msg, isSearch }: { msg: Message; isSearch?: boolean }) {
 }
 
 // ─── Message Input ────────────────────────────────────────────────────────────
-function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
+function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; senderName: string | null }) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState<string|null>(null);
@@ -269,11 +269,20 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Prepend "FirstName: " if a sender name is available.
+  // For GIF URLs (bare https://…) we prepend on a separate line so Discord still
+  // embeds the URL cleanly: "Jon:\nhttps://tenor.com/view/…"
+  function withPrefix(content: string): string {
+    if (!senderName) return content;
+    const isUrl = /^https?:\/\/\S+$/.test(content.trim());
+    return isUrl ? `${senderName}:\n${content.trim()}` : `${senderName}: ${content}`;
+  }
+
   async function sendText(content: string) {
     const c = content.trim(); if (!c) return;
     setSending(true); setSendErr(null);
     try {
-      const res = await fetch(EDGE_URL, { method:"POST", headers:{...H,"Content-Type":"application/json"}, body:JSON.stringify({content:c}) });
+      const res = await fetch(EDGE_URL, { method:"POST", headers:{...H,"Content-Type":"application/json"}, body:JSON.stringify({ content: withPrefix(c) }) });
       const body = await res.json();
       if (!res.ok) { setSendErr(body?.error??`Failed (${res.status})`); return; }
       if (body.message) onSent(body.message);
@@ -286,7 +295,8 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
     try {
       const fd = new FormData();
       fd.append("file", file, file.name);
-      if (caption.trim()) fd.append("caption", caption.trim());
+      const cap = caption.trim();
+      if (cap) fd.append("caption", withPrefix(cap));
       const res = await fetch(EDGE_URL, { method:"POST", headers: H, body: fd });
       const body = await res.json();
       if (!res.ok) { setSendErr(body?.error??`Upload failed (${res.status})`); return; }
@@ -330,6 +340,9 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
 
   const busy = sending || uploading;
   const canSend = !busy && (pendingFile !== null || value.trim().length > 0);
+  const placeholder = pendingFile
+    ? "Add a caption (optional)…"
+    : senderName ? `Message as ${senderName}…` : "Message #general";
 
   return (
     <div style={{flexShrink:0, borderTop:"1px solid hsl(var(--surface-border))", backgroundColor:"hsl(var(--surface))", position:"relative"}}>
@@ -351,8 +364,7 @@ function MessageInput({ onSent }: { onSent:(msg:Message)=>void }) {
       <div style={{padding:"8px 12px 0"}}>
         <div style={{backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"7px 10px"}}>
           <textarea ref={taRef} value={value} onChange={onInput} onKeyDown={onKey}
-            placeholder={pendingFile ? "Add a caption (optional)…" : "Message #general"}
-            disabled={busy} rows={1}
+            placeholder={placeholder} disabled={busy} rows={1}
             style={{display:"block",width:"100%",boxSizing:"border-box",resize:"none",background:"none",border:"none",outline:"none",fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.45,minHeight:"20px",maxHeight:"120px",overflowY:"auto",padding:0,opacity:busy?.5:1}}/>
         </div>
       </div>
@@ -400,6 +412,11 @@ export function DiscordFeed() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchErr, setSearchErr] = useState<string|null>(null);
   const [searchTotal, setSearchTotal] = useState(0);
+
+  // Derive first name from profile for bot message attribution.
+  // Gracefully null when Supabase isn't configured (Bolt preview) or no profile row exists.
+  const profile = useProfile();
+  const senderName = profile?.full_name ? profile.full_name.trim().split(/\s+/)[0] : null;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string|null>(null);
@@ -566,7 +583,7 @@ export function DiscordFeed() {
             return <MsgRow key={item.msg.id} msg={item.msg} isSearch={inSearch}/>;
           })}
         </div>
-        {!searchOpen && <MessageInput onSent={handleSent}/>}
+        {!searchOpen && <MessageInput onSent={handleSent} senderName={senderName}/>}
       </div>
       {open&&<div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:199,backgroundColor:"rgba(10,20,40,0.2)"}}/>}
       {!open&&(
