@@ -109,9 +109,9 @@ export default function Clients() {
     try {
       const url = await resolveLink(c, tier);
       await navigator.clipboard.writeText(url);
-      toast.success(`Payment link copied \u2014 ${TIER_LABELS[tier]}`);
+      toast.success(`Payment link copied — ${TIER_LABELS[tier]}`);
     } catch {
-      toast.error("Failed to copy link \u2014 check connection and retry.");
+      toast.error("Failed to copy link — check connection and retry.");
     } finally {
       setLinkLoading(false);
     }
@@ -123,7 +123,7 @@ export default function Clients() {
       const url = await resolveLink(c, tier);
       window.open(url, "_blank");
     } catch {
-      toast.error("Failed to open link \u2014 check connection and retry.");
+      toast.error("Failed to open link — check connection and retry.");
     } finally {
       setLinkLoading(false);
     }
@@ -142,7 +142,7 @@ export default function Clients() {
       if (result.error === "Client has already signed up") {
         toast.info("This client has already completed portal signup.");
       } else {
-        toast.error(`Invite failed \u2014 ${result.error}`);
+        toast.error(`Invite failed — ${result.error}`);
       }
     }
   }
@@ -156,7 +156,7 @@ export default function Clients() {
       setSelectedClient(prev => prev ? { ...prev, tenant_id: result.tenant_id } : prev);
       refetch();
     } else {
-      toast.error(`Provisioning failed \u2014 ${result.error}`);
+      toast.error(`Provisioning failed — ${result.error}`);
     }
   }
 
@@ -169,13 +169,13 @@ export default function Clients() {
       <div className="px-4 md:px-6 py-4" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <h1 className="font-display text-[24px] md:text-[28px] tracking-[0.02em] leading-none" style={{ color: "hsl(var(--foreground))" }}>Clients</h1>
         <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>
-          {clients.length} accounts \u00b7 ${mrr > 0 ? (mrr / 100).toLocaleString("en-US") : "0"}/mo MRR
+          {clients.length} accounts · ${mrr > 0 ? (mrr / 100).toLocaleString("en-US") : "0"}/mo MRR
         </p>
       </div>
 
       <div className="px-4 md:px-6 py-3 flex flex-wrap gap-2 items-center" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <input
-          type="text" placeholder="Search name, email, state\u2026"
+          type="text" placeholder="Search name, email, state…"
           value={search} onChange={e => { setSearch(e.target.value); resetPage(); }}
           style={{
             fontFamily: "'DM Sans', sans-serif", fontSize: "13px",
@@ -206,19 +206,19 @@ export default function Clients() {
 
       {isLoading && (
         <div className="px-4 md:px-6 py-4 font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>
-          Loading clients\u2026
+          Loading clients…
         </div>
       )}
       {isError && (
         <div className="mx-4 md:mx-6 my-3 p-4 font-mono text-[11px] tracking-[0.12em] uppercase" style={{ color: RUST, border: `1px solid ${RUST}4d`, backgroundColor: `${RUST}0f` }}>
-          Failed to load clients \u2014 check connection and refresh.
+          Failed to load clients — check connection and refresh.
         </div>
       )}
 
       {!isLoading && !isError && filtered.length === 0 && (
         <div className="mx-4 md:mx-6 my-6 p-10 text-center" style={{ border: "1px dashed hsl(var(--border))" }}>
           <div className="font-mono text-[10px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
-            {clients.length === 0 ? "No clients yet \u2014 convert a won prospect from Pipeline" : "No results match filters"}
+            {clients.length === 0 ? "No clients yet — convert a won prospect from Pipeline" : "No results match filters"}
           </div>
         </div>
       )}
@@ -264,7 +264,7 @@ export default function Clients() {
               <span className="hidden lg:inline font-mono text-[9px] flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.6 }}>
                 {formatDate(c.created_at)}
               </span>
-              <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>\u2192</span>
+              <span className="font-mono text-[11px] flex-shrink-0" style={{ color: RUST }}>→</span>
             </div>
           );
         })}
@@ -273,10 +273,10 @@ export default function Clients() {
       {totalPages > 1 && (
         <div className="px-4 md:px-6 py-4 flex items-center gap-2 justify-between" style={{ borderTop: "1px solid hsl(var(--border))" }}>
           <span className="font-mono text-[10px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>
-            Page {safeP} of {totalPages} \u00b7 {filtered.length} results
+            Page {safeP} of {totalPages} · {filtered.length} results
           </span>
           <div className="flex gap-1">
-            <PagBtn label="\u2039" disabled={safeP === 1} onClick={() => setPage(p => Math.max(1, p - 1))} />
+            <PagBtn label="‹" disabled={safeP === 1} onClick={() => setPage(p => Math.max(1, p - 1))} />
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter(n => n === 1 || n === totalPages || Math.abs(n - safeP) <= 1)
               .reduce<(number | "...")[]>((acc, n, i, arr) => {
@@ -284,11 +284,11 @@ export default function Clients() {
                 acc.push(n); return acc;
               }, [])
               .map((n, i) => n === "..." ? (
-                <span key={`e${i}`} className="font-mono text-[10px] px-2 py-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>\u2026</span>
+                <span key={`e${i}`} className="font-mono text-[10px] px-2 py-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>…</span>
               ) : (
                 <PagBtn key={n} label={String(n)} active={n === safeP} onClick={() => setPage(n as number)} />
               ))}
-            <PagBtn label="\u203a" disabled={safeP === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} />
+            <PagBtn label="›" disabled={safeP === totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))} />
           </div>
         </div>
       )}
@@ -332,27 +332,27 @@ export default function Clients() {
                   }}
                 >
                   {TIER_OPTIONS.map(t => (
-                    <option key={t} value={t}>{TIER_LABELS[t]} \u2014 {formatCents(setupFeeCents(t))}</option>
+                    <option key={t} value={t}>{TIER_LABELS[t]} — {formatCents(setupFeeCents(t))}</option>
                   ))}
                 </select>
               </div>
               {activeTier !== selectedClient.pricing_tier && (
                 <div className="font-mono text-[9px] tracking-[0.08em] mb-2" style={{ color: RUST }}>
-                  \u26a0 Override active \u2014 client tier is {TIER_LABELS[selectedClient.pricing_tier]}
+                  ⚠ Override active — client tier is {TIER_LABELS[selectedClient.pricing_tier]}
                 </div>
               )}
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => handleCopyLink(selectedClient, activeTier)} disabled={linkLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ backgroundColor: NAVY, color: "hsl(38,33%,92%)", border: "none", cursor: linkLoading ? "not-allowed" : "pointer" }}
-                >{linkLoading ? "Loading\u2026" : "Copy Link"}</button>
+                >{linkLoading ? "Loading…" : "Copy Link"}</button>
                 <button onClick={() => handleOpenLink(selectedClient, activeTier)} disabled={linkLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ border: `1px solid ${RUST}`, color: RUST, background: "none", cursor: linkLoading ? "not-allowed" : "pointer" }}
                 >Open Link</button>
               </div>
               <p className="font-mono text-[9px] tracking-[0.08em] mt-2" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
-                Prefills client email \u00b7 attaches client ID for reconciliation
+                Prefills client email · attaches client ID for reconciliation
               </p>
             </div>
 
@@ -381,7 +381,7 @@ export default function Clients() {
                     style={{ color: "hsl(var(--foreground))", textDecorationLine: "underline", textDecorationColor: `${RUST}80` }}>
                     {selectedClient.email}
                   </a>
-                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>\u2014</span>}
+                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>—</span>}
               </DetailRow>
               <DetailRow label="Phone">
                 {selectedClient.phone ? (
@@ -389,9 +389,9 @@ export default function Clients() {
                     style={{ color: "hsl(var(--foreground))", textDecorationLine: "underline", textDecorationColor: `${RUST}80` }}>
                     {displayPhone(selectedClient.phone)}
                   </a>
-                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>\u2014</span>}
+                ) : <span className="font-body text-[13px]" style={{ color: "hsl(var(--foreground))" }}>—</span>}
               </DetailRow>
-              <DetailRow label="State"   value={selectedClient.state || "\u2014"} />
+              <DetailRow label="State"   value={selectedClient.state || "—"} />
               <DetailRow label="Started" value={formatDate(selectedClient.created_at)} />
               {selectedClient.portal_invite_sent_at && (
                 <DetailRow label="Invited" value={formatDate(selectedClient.portal_invite_sent_at)} />
@@ -406,7 +406,7 @@ export default function Clients() {
   );
 }
 
-// \u2500\u2500 Provision Tenant Panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Provision Tenant Panel ────────────────────────────────────────────────────
 
 function ProvisionPanel({
   client, loading, confirm, onProvision, onCancelConfirm,
@@ -435,7 +435,7 @@ function ProvisionPanel({
 
       {isProvisioned ? (
         <p className="font-mono text-[10px] tracking-[0.06em]" style={{ color: GREEN }}>
-          \u2713 Tenant system is live. Owner login and staff invites are active.
+          ✓ Tenant system is live. Owner login and staff invites are active.
         </p>
       ) : (
         <>
@@ -452,7 +452,7 @@ function ProvisionPanel({
                 <button onClick={onProvision} disabled={loading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ backgroundColor: NAVY, color: "hsl(38,33%,92%)", border: "none", cursor: loading ? "not-allowed" : "pointer" }}
-                >{loading ? "Provisioning\u2026" : "Confirm Provision"}</button>
+                >{loading ? "Provisioning…" : "Confirm Provision"}</button>
                 <button onClick={onCancelConfirm} disabled={loading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2"
                   style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))", background: "none", cursor: "pointer" }}
@@ -463,7 +463,7 @@ function ProvisionPanel({
             <button onClick={onProvision} disabled={loading}
               className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
               style={{ backgroundColor: NAVY, color: "hsl(38,33%,92%)", border: "none", cursor: loading ? "not-allowed" : "pointer" }}
-            >{loading ? "Provisioning\u2026" : "Provision Tenant"}</button>
+            >{loading ? "Provisioning…" : "Provision Tenant"}</button>
           )}
         </>
       )}
@@ -471,7 +471,7 @@ function ProvisionPanel({
   );
 }
 
-// \u2500\u2500 Portal Invite Panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Portal Invite Panel ───────────────────────────────────────────────────────
 
 function PortalInvitePanel({
   client, inviteLoading, inviteConfirm, onSend, onCancelConfirm,
@@ -499,7 +499,7 @@ function PortalInvitePanel({
 
       {isSignedUp && (
         <p className="font-mono text-[10px] tracking-[0.06em]" style={{ color: GREEN }}>
-          \u2713 Client has created their portal account.
+          ✓ Client has created their portal account.
         </p>
       )}
 
@@ -507,7 +507,7 @@ function PortalInvitePanel({
         <>
           {isInvited && client.portal_invite_sent_at && (
             <p className="font-mono text-[9px] tracking-[0.06em] mb-3" style={{ color: "hsl(var(--muted-foreground))" }}>
-              Invite sent {formatDate(client.portal_invite_sent_at)} \u00b7 awaiting signup
+              Invite sent {formatDate(client.portal_invite_sent_at)} · awaiting signup
             </p>
           )}
 
@@ -522,7 +522,7 @@ function PortalInvitePanel({
                 <button onClick={onSend} disabled={inviteLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ backgroundColor: AMBER, color: "hsl(0,0%,10%)", border: "none", cursor: inviteLoading ? "not-allowed" : "pointer" }}
-                >{inviteLoading ? "Sending\u2026" : "Confirm Send"}</button>
+                >{inviteLoading ? "Sending…" : "Confirm Send"}</button>
                 <button onClick={onCancelConfirm} disabled={inviteLoading}
                   className="font-mono text-[10px] tracking-[0.12em] uppercase px-4 py-2 transition-opacity disabled:opacity-40"
                   style={{ border: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))", background: "none", cursor: "pointer" }}
@@ -539,12 +539,12 @@ function PortalInvitePanel({
                 cursor: inviteLoading ? "not-allowed" : "pointer",
               }}
             >
-              {inviteLoading ? "Sending\u2026" : isInvited ? "Resend Invite" : "Send Portal Invite"}
+              {inviteLoading ? "Sending…" : isInvited ? "Resend Invite" : "Send Portal Invite"}
             </button>
           )}
 
           <p className="font-mono text-[9px] tracking-[0.06em] mt-2" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>
-            Sends a magic link to {client.email} \u00b7 client sets their password on first login
+            Sends a magic link to {client.email} · client sets their password on first login
           </p>
         </>
       )}
@@ -552,7 +552,7 @@ function PortalInvitePanel({
   );
 }
 
-// \u2500\u2500 Shared sub-components \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── Shared sub-components ─────────────────────────────────────────────────────
 
 function FilterSelect({ value, onChange, options, label }: {
   value: string; onChange: (v: string) => void; options: string[]; label: string;
