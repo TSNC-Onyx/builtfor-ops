@@ -3,14 +3,18 @@ import { useAddProspect } from "@/hooks/useProspects";
 import { formatPhone } from "@/lib/utils";
 import type { IndustryVertical } from "@/types/pipeline";
 
+/**
+ * NOTE: DB enum values (e.g. "landscaping") are preserved.
+ * Display labels are updated to reflect the current ICP (Lawn Care).
+ */
 const VERTICALS: { value: IndustryVertical; label: string }[] = [
-  { value: "landscaping", label: "Landscaping" },
+  { value: "landscaping", label: "Lawn Care" },
   { value: "hvac",        label: "HVAC" },
   { value: "plumbing",    label: "Plumbing" },
   { value: "electrical",  label: "Electrical" },
   { value: "pest_control",label: "Pest Control" },
   { value: "cleaning",    label: "Cleaning" },
-  { value: "other",       label: "Other…" },
+  { value: "other",       label: "Other\u2026" },
 ];
 
 export function AddProspectModal({ onClose }: { onClose: () => void }) {
@@ -79,10 +83,9 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="px-6 py-5 space-y-3 max-h-[70vh] overflow-y-auto">
-          {/* Text fields — phone handled separately */}
           {([
-            { k: "full_name",        label: "Owner name",    placeholder: "First Last",        required: true },
-            { k: "business_name",    label: "Business name", placeholder: "Acme Landscaping",   required: true },
+            { k: "full_name",        label: "Owner name",    placeholder: "First Last",           required: true },
+            { k: "business_name",    label: "Business name", placeholder: "Acme Lawn Care",        required: true },
             { k: "email",            label: "Email",         placeholder: "owner@company.com" },
             { k: "state",            label: "State",         placeholder: "NC", maxLen: 2 },
             { k: "next_action",      label: "Next action",   placeholder: "Send intro email" },
@@ -129,7 +132,7 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
               <label className="block font-mono text-[9px] tracking-[0.14em] uppercase mb-1" style={{ color: "hsl(var(--rust))" }}>Specify trade / industry *</label>
               <input
                 type="text"
-                placeholder="e.g. Tree service, Irrigation…"
+                placeholder="e.g. Tree service, Irrigation\u2026"
                 value={form.vertical_custom}
                 onChange={e => set("vertical_custom", e.target.value)}
                 autoFocus
@@ -142,7 +145,7 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
           <div>
             <label className="block font-mono text-[9px] tracking-[0.14em] uppercase mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>Source</label>
             <select value={form.source} onChange={e => set("source", e.target.value)} style={fieldStyle}>
-              <option value="">—</option>
+              <option value="">&mdash;</option>
               {["outreach", "referral", "trade_show", "inbound"].map(v => (
                 <option key={v} value={v}>{v.replace("_", " ")}</option>
               ))}
@@ -172,7 +175,7 @@ export function AddProspectModal({ onClose }: { onClose: () => void }) {
             className="flex-1 font-mono text-[11px] tracking-[0.12em] uppercase py-2.5 disabled:opacity-50"
             style={{ backgroundColor: "hsl(var(--nav-active-bg))", color: "hsl(var(--nav-active-text))" }}
           >
-            {add.isPending ? "Adding…" : "Add prospect"}
+            {add.isPending ? "Adding\u2026" : "Add prospect"}
           </button>
         </div>
       </div>

@@ -102,9 +102,15 @@ export const TIER_CONFIG_KEY: Record<PricingTier, string> = {
 
 export const FOUNDING_SPOTS = 5;
 
-/** Returns the display label for a vertical, using custom text when vertical = 'other' */
+/**
+ * Returns the display label for a vertical.
+ * NOTE: The DB enum value "landscaping" is preserved as-is — only the display
+ * label is updated to "Lawn Care" to reflect the current ICP focus.
+ * Do not change the underlying enum value without a coordinated DB migration.
+ */
 export function verticalLabel(vertical: IndustryVertical, custom: string | null | undefined): string {
   if (vertical === "other") return custom?.trim() || "Other";
+  if (vertical === "landscaping") return "Lawn Care";
   return vertical.replace("_", " ");
 }
 
