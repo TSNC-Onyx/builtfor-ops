@@ -15,6 +15,8 @@ export type PricingTier = "founding" | "standard" | "tlcc";
 /** Mirrors portal_invite_status DB enum */
 export type PortalInviteStatus = "not_invited" | "invited" | "signed_up";
 
+export type OperationType = "mowing" | "installs" | "both";
+
 export interface Prospect {
   id: string;
   full_name: string;
@@ -31,6 +33,11 @@ export interface Prospect {
   next_action: string | null;
   next_action_date: string | null;
   lost_reason: string | null;
+  // Application fields — populated from website Apply Modal
+  team_size: string | null;
+  operation_type: OperationType | null;
+  current_tool: string | null;
+  annual_revenue: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -119,4 +126,26 @@ export const PORTAL_INVITE_CONFIG: Record<PortalInviteStatus, { label: string; c
   not_invited: { label: "Not Invited",  color: "hsl(216,21%,62%)" },
   invited:     { label: "Invite Sent",  color: "hsl(38,90%,50%)" },
   signed_up:   { label: "Signed Up",    color: "hsl(145,50%,40%)" },
+};
+
+export const OPERATION_TYPE_LABELS: Record<string, string> = {
+  mowing:   "Recurring maintenance routes",
+  installs: "Installation / design-build",
+  both:     "Routes + some install work",
+};
+
+export const TOOL_LABELS: Record<string, string> = {
+  jobber:       "Jobber",
+  quickbooks:   "QuickBooks only",
+  servicetitan: "ServiceTitan / Aspire",
+  spreadsheets: "Spreadsheets / Google Sheets",
+  nothing:      "Nothing — pen and paper",
+  other:        "Something else",
+};
+
+export const REVENUE_LABELS: Record<string, string> = {
+  under250k: "Under $250K",
+  "250_500k": "$250K – $500K",
+  "500k_1m":  "$500K – $1M",
+  over1m:    "Over $1M",
 };

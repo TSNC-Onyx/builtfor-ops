@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
-import type { Prospect, ProspectStage, IndustryVertical } from "@/types/pipeline";
-import { STAGE_LABELS, STAGE_ORDER, SOURCE_LABELS } from "@/types/pipeline";
+import type { Prospect, ProspectStage, IndustryVertical, OperationType } from "@/types/pipeline";
+import {
+  STAGE_LABELS, STAGE_ORDER, SOURCE_LABELS,
+  OPERATION_TYPE_LABELS, TOOL_LABELS, REVENUE_LABELS,
+} from "@/types/pipeline";
 import { useUpdateProspect, useConvertToClient, useProspects } from "@/hooks/useProspects";
 import { formatDate, formatPhone } from "@/lib/utils";
 
@@ -20,7 +23,6 @@ const fieldStyle: React.CSSProperties = {
   backgroundColor: "hsl(var(--surface-raised))", color: "hsl(var(--foreground))", outline: "none",
 };
 
-// Business name input styled to match ProspectCard — font-body, semibold, 13px
 const businessNameInputStyle: React.CSSProperties = {
   width: "100%",
   fontFamily: "'DM Sans', sans-serif",
@@ -41,6 +43,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function Divider({ label }: { label: string }) {
+  return (
+    <div className="pt-1 pb-0.5" style={{ borderTop: "1px solid hsl(var(--border))" }}>
+      <span className="font-mono text-[9px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--rust))" }}>{label}</span>
     </div>
   );
 }
@@ -95,29 +105,40 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
   }
 
   const showCustom = (form.vertical ?? prospect.vertical) === "other";
-  // Live business name — reflects in-progress edits before save
   const liveBusinessName = form.business_name ?? prospect.business_name;
+  const liveName = form.full_name ?? prospect.full_name;
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: "hsl(var(--surface))", borderLeft: "1px solid hsl(var(--border))" }}>
-      {/* Header — shows live name so changes are previewed immediately */}
+      {/* Header */}
       <div className="px-6 py-4 flex items-start justify-between gap-4" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <div className="min-w-0 flex-1">
-          {/* Display title mirrors card: font-body semibold 13px — updates live as user types */}
           <div
             className="font-body font-semibold leading-tight truncate"
             style={{ fontSize: "13px", color: "hsl(var(--foreground))" }}
           >
             {liveBusinessName}
           </div>
-          <div className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{prospect.full_name}</div>
+          <div className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{liveName}</div>
         </div>
-        <button onClick={onClose} className="text-lg leading-none flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>✕</button>
+        <button onClick={onClose} className="text-lg leading-none flex-shrink-0" style={{ color: "hsl(var(--muted-foreground))" }}>&#x2715;</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-        {/* Business name — editable, styled to match pipeline card exactly */}
+        {/* — Contact — */}
+        <Divider label="Contact" />
+
+        <Field label="Contact name">
+          <input
+            type="text"
+            placeholder="First & Last"
+            value={form.full_name ?? prospect.full_name}
+            onChange={e => set("full_name", e.target.value)}
+            style={fieldStyle}
+          />
+        </Field>
+
         <Field label="Business name">
           <input
             type="text"
@@ -127,6 +148,75 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
             placeholder="Business name"
           />
         </Field>
+
+        <Field label="Email"><input value={form.email ?? ""} onChange={e => set("email", e.target.value)} style={fieldStyle} /></Field>
+
+        <Field label="Phone">
+          <input
+            type="tel"
+            placeholder="(555) 000-0000"
+            value={form.phone ?? ""}
+            onChange={e => handlePhone(e.target.value)}
+            style={fieldStyle}
+          />
+        </Field>
+
+        <Field label="State"><input maxLength={2} value={form.state ?? ""} onChange={e => set("state", e.target.value as any)} style={fieldStyle} placeholder="NC" /></Field>
+
+        {/* — Application info — */}
+        <Divider label="Application" />
+
+        <Field label="Crews / Team Size">
+          <input
+            type="text"
+            placeholder="e.g. 2 crews, 6 people"
+            value={form.team_size ?? ""}
+            onChange={e => set("team_size", e.target.value)}
+            style={fieldStyle}
+          />
+        </Field>
+
+        <Field label="Operation Type">
+          <select
+            value={form.operation_type ?? ""}
+            onChange={e => set("operation_type", (e.target.value || null) as OperationType | null)}
+            style={fieldStyle}
+          >
+            <option value="">—</option>
+            {Object.entries(OPERATION_TYPE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Current Tool">
+          <select
+            value={form.current_tool ?? ""}
+            onChange={e => set("current_tool", e.target.value || null)}
+            style={fieldStyle}
+          >
+            <option value="">—</option>
+            {Object.entries(TOOL_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Annual Revenue">
+          <select
+            value={form.annual_revenue ?? ""}
+            onChange={e => set("annual_revenue", e.target.value || null)}
+            style={fieldStyle}
+          >
+            <option value="">—</option>
+            {Object.entries(REVENUE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </Field>
+
+        {/* — Pipeline — */}
+        <Divider label="Pipeline" />
 
         <Field label="Stage">
           <select value={form.stage ?? prospect.stage} onChange={e => set("stage", e.target.value as ProspectStage)} style={fieldStyle}>
@@ -157,26 +247,15 @@ export function ProspectDetail({ prospectId, onClose }: { prospectId: string; on
           </Field>
         )}
 
-        <Field label="Email"><input value={form.email ?? ""} onChange={e => set("email", e.target.value)} style={fieldStyle} /></Field>
-
-        <Field label="Phone">
-          <input
-            type="tel"
-            placeholder="(555) 000-0000"
-            value={form.phone ?? ""}
-            onChange={e => handlePhone(e.target.value)}
-            style={fieldStyle}
-          />
-        </Field>
-
-        <Field label="State"><input maxLength={2} value={form.state ?? ""} onChange={e => set("state", e.target.value as any)} style={fieldStyle} placeholder="NC" /></Field>
-
         <Field label="Source">
           <select value={form.source ?? ""} onChange={e => set("source", e.target.value)} style={fieldStyle}>
             <option value="">—</option>
             {Object.entries(SOURCE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
         </Field>
+
+        {/* — Actions — */}
+        <Divider label="Next action" />
 
         <Field label="Next action"><input value={form.next_action ?? ""} onChange={e => set("next_action", e.target.value)} style={fieldStyle} placeholder="Send proposal" /></Field>
         <Field label="Due date"><input type="date" value={form.next_action_date ?? ""} onChange={e => set("next_action_date", e.target.value)} style={fieldStyle} /></Field>
