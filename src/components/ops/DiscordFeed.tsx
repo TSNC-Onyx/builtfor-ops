@@ -62,7 +62,7 @@ function parseMarkdown(raw: string): React.ReactNode[] {
     const ment=s.match(/^<[@#][!&]?\d+>/); if(ment){out.push(<span key={k++} style={{backgroundColor:"rgba(88,101,242,0.18)",color:"#8ea1e1",padding:"0 2px",borderRadius:"2px"}}>{ment[0].startsWith("<#")?"#channel":"@user"}</span>);s=s.slice(ment[0].length);continue;}
     // ── [label](url) inline links — must come before bare URL match ──────────
     if (s.startsWith("[")) {
-      const lblEnd = s.indexOf("]("); 
+      const lblEnd = s.indexOf("](");
       if (lblEnd > 1) {
         const urlStart = lblEnd + 2;
         const urlEnd = s.indexOf(")", urlStart);
@@ -485,7 +485,6 @@ export function DiscordFeed() {
   const [showChannelPicker, setShowChannelPicker] = useState(false);
   const channelBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Load channel list once on mount
   useEffect(() => {
     fetch(`${EDGE_URL}?action=list-channels`, { headers: H })
       .then(r => r.json())
@@ -508,18 +507,30 @@ export function DiscordFeed() {
   const hasFetchedRef = useRef(false);
   const prependHeightRef = useRef(0);
   const isPrependRef = useRef(false);
+  // Set true before any operation that should land at the bottom.
+  // Consumed in useLayoutEffect after React paints new message nodes,
+  // guaranteeing scrollHeight reflects actual content.
+  const scrollToBottomRef = useRef(false);
 
   useLayoutEffect(() => {
+    // Prepend (load-older) path: restore scroll position after prepend.
     if (isPrependRef.current && scrollRef.current && prependHeightRef.current > 0) {
-      const diff = scrollRef.current.scrollHeight - prependHeightRef.current;
-      scrollRef.current.scrollTop = diff;
-      prependHeightRef.current = 0; isPrependRef.current = false;
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prependHeightRef.current;
+      prependHeightRef.current = 0;
+      isPrependRef.current = false;
+      return;
+    }
+    // Bottom-land path: open, channel switch, initial fetch, sent message.
+    if (scrollToBottomRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollToBottomRef.current = false;
     }
   }, [messages]);
 
   async function fetchMessages(quiet = false, channelOverride?: string) {
     const cid = channelOverride ?? activeChannel.id;
-    if (!quiet) setLoading(true); setError(null);
+    if (!quiet) setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`${EDGE_URL}?limit=50&channel_id=${encodeURIComponent(cid)}`, { headers: H });
       const body = await res.json();
@@ -537,7 +548,10 @@ export function DiscordFeed() {
         if (prevIdRef.current && latest !== prevIdRef.current && !open) setNewCount(n=>n+1);
         prevIdRef.current = latest;
       }
-      setHasMore(body.hasMore ?? (msgs.length === 50)); setMessages(msgs);
+      // Flag scroll-to-bottom before setting messages so useLayoutEffect fires after paint.
+      if (!quiet) scrollToBottomRef.current = true;
+      setHasMore(body.hasMore ?? (msgs.length === 50));
+      setMessages(msgs);
     } catch { setError("Could not reach the Discord feed."); }
     finally { setLoading(false); }
   }
@@ -552,12 +566,14 @@ export function DiscordFeed() {
     setSearchOpen(false);
     setSearchQ("");
     setSearchResults(null);
+    // fetchMessages will set scrollToBottomRef = true before setting messages.
     fetchMessages(false, ch.id);
   }
 
   async function loadMore() {
     if (loadingMore || !hasMore || messages.length === 0) return;
-    const oldest = messages[0].id; setLoadingMore(true);
+    const oldest = messages[0].id;
+    setLoadingMore(true);
     prependHeightRef.current = scrollRef.current?.scrollHeight ?? 0;
     isPrependRef.current = true;
     try {
@@ -594,27 +610,34 @@ export function DiscordFeed() {
   }, [searchQ, searchOpen]);
 
   function handleSent(msg: Message) {
-    setMessages(prev => { if (prev.some(m=>m.id===msg.id)) return prev; return [...prev, msg]; });
+    setMessages(prev => {
+      if (prev.some(m=>m.id===msg.id)) return prev;
+      scrollToBottomRef.current = true;
+      return [...prev, msg];
+    });
     prevIdRef.current = msg.id;
-    setTimeout(() => { if(scrollRef.current) scrollRef.current.scrollTop=scrollRef.current.scrollHeight; }, 50);
   }
 
+  // Initial fetch + polling
   useEffect(() => {
-    if (!hasFetchedRef.current) { hasFetchedRef.current=true; fetchMessages(); }
-    const id = setInterval(()=>fetchMessages(true), POLL_MS);
-    return ()=>clearInterval(id);
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      scrollToBottomRef.current = true;
+      fetchMessages();
+    }
+    const id = setInterval(() => fetchMessages(true), POLL_MS);
+    return () => clearInterval(id);
   }, [activeChannel.id]);
 
+  // When panel opens, scroll to bottom immediately if messages already loaded.
   useEffect(() => {
-    if (open) { setNewCount(0); setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},80); }
-  }, [open]);
-
-  useEffect(() => {
-    if (open && !searchOpen && scrollRef.current) {
-      const el = scrollRef.current;
-      if (el.scrollHeight-el.scrollTop-el.clientHeight < 100) el.scrollTop=el.scrollHeight;
+    if (open) {
+      setNewCount(0);
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
     }
-  }, [messages, open, searchOpen]);
+  }, [open]);
 
   const items: Array<{type:"div";label:string}|{type:"msg";msg:Message}> = [];
   const activeMsgs = searchOpen && searchResults !== null ? searchResults : messages;
