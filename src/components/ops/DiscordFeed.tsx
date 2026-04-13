@@ -5,6 +5,7 @@ const EDGE_URL = "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/discord-
 const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzZGN4dm15d2ltcWZwZGtldmR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0ODc0MDcsImV4cCI6MjA5MTA2MzQwN30.UXYnT3R2R28JicoAjRnhHMKsUvpgkqYICJRM0jsLCmg";
 const POLL_MS = 15_000;
 const H = { "apikey": ANON_KEY, "Authorization": `Bearer ${ANON_KEY}` };
+const DEFAULT_CHANNEL_ID = "1491163324375629846";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Attachment { url: string; proxyUrl: string; contentType: string | null; filename: string; width: number | null; height: number | null; }
@@ -15,6 +16,7 @@ interface ReplyTo { id: string; author: string; content: string; attachments?: n
 interface Reaction { count: number; emoji: { id: string | null; name: string; url: string | null }; }
 interface Message { id: string; type: number; systemLabel: string | null; content: string; timestamp: string; editedTimestamp: string | null; author: string; authorId: string | null; avatarUrl: string | null; attachments: Attachment[]; embeds: Embed[]; stickers: Sticker[]; replyTo: ReplyTo | null; reactions: Reaction[]; pinned: boolean; }
 interface Gif { id: string; title: string; previewUrl: string; gifUrl: string; mp4Url: string | null; }
+interface DiscordChannel { id: string; name: string; type: number; }
 
 // ─── Emoji categories ────────────────────────────────────────────────────────
 const EMOJI_CATS = [
@@ -122,7 +124,6 @@ function DateDivider({ label }: { label: string }) {
   return <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 14px",margin:"4px 0"}}><div style={{flex:1,height:"1px",backgroundColor:"hsl(var(--surface-border))"}}/><span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",letterSpacing:"0.12em",textTransform:"uppercase",color:"hsl(var(--muted-foreground))",whiteSpace:"nowrap"}}>{label}</span><div style={{flex:1,height:"1px",backgroundColor:"hsl(var(--surface-border))"}}/></div>;
 }
 
-// ─── Shared toolbar button ────────────────────────────────────────────────────
 function ToolBtn({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
   return (
     <button onClick={onClick} title={title}
@@ -131,6 +132,53 @@ function ToolBtn({ active, onClick, title, children }: { active?: boolean; onCli
       onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.opacity=active?"1":"0.7";}}>
       {children}
     </button>
+  );
+}
+
+// ─── Channel picker dropdown ──────────────────────────────────────────────────
+function ChannelPicker({ channels, activeId, onSelect, onClose }: {
+  channels: DiscordChannel[];
+  activeId: string;
+  onSelect: (ch: DiscordChannel) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const dn = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    const kd = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", dn);
+    document.addEventListener("keydown", kd);
+    return () => { document.removeEventListener("mousedown", dn); document.removeEventListener("keydown", kd); };
+  }, [onClose]);
+
+  return (
+    <div ref={ref} style={{
+      position:"absolute", top:"calc(100% + 2px)", left:0, minWidth:"200px", maxWidth:"260px",
+      backgroundColor:"hsl(var(--surface))", border:"1px solid hsl(var(--surface-border))",
+      boxShadow:"0 4px 16px rgba(10,20,40,0.2)", zIndex:30,
+      maxHeight:"240px", overflowY:"auto",
+    }}>
+      {channels.map(ch => (
+        <button key={ch.id} onClick={() => { onSelect(ch); onClose(); }}
+          style={{
+            display:"flex", alignItems:"center", gap:"6px",
+            width:"100%", padding:"7px 12px", background:"none",
+            border:"none", cursor:"pointer", textAlign:"left",
+            backgroundColor: ch.id === activeId ? "hsl(var(--surface-raised))" : "transparent",
+            borderLeft: ch.id === activeId ? "2px solid #5865F2" : "2px solid transparent",
+          }}
+          onMouseEnter={e=>{if(ch.id!==activeId)(e.currentTarget as HTMLButtonElement).style.backgroundColor="hsl(var(--surface-raised))";}}
+          onMouseLeave={e=>{if(ch.id!==activeId)(e.currentTarget as HTMLButtonElement).style.backgroundColor="transparent";}}>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:"11px",color:"hsl(var(--muted-foreground))",flexShrink:0}}>#</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:"11px",letterSpacing:"0.04em",color:"hsl(var(--foreground))",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ch.name}</span>
+          {ch.id === activeId && (
+            <svg style={{marginLeft:"auto",flexShrink:0}} width="10" height="10" viewBox="0 0 14 14" fill="none">
+              <path d="M2 7l4 4 6-6" stroke="#5865F2" strokeWidth="2" strokeLinecap="square"/>
+            </svg>
+          )}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -258,7 +306,7 @@ function MsgRow({ msg, isSearch }: { msg: Message; isSearch?: boolean }) {
 }
 
 // ─── Message Input ────────────────────────────────────────────────────────────
-function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; senderName: string | null }) {
+function MessageInput({ onSent, senderName, channelId }: { onSent:(msg:Message)=>void; senderName: string | null; channelId: string }) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState<string|null>(null);
@@ -269,9 +317,6 @@ function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; send
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Prepend "FirstName: " if a sender name is available.
-  // For GIF URLs (bare https://…) we prepend on a separate line so Discord still
-  // embeds the URL cleanly: "Jon:\nhttps://tenor.com/view/…"
   function withPrefix(content: string): string {
     if (!senderName) return content;
     const isUrl = /^https?:\/\/\S+$/.test(content.trim());
@@ -282,7 +327,10 @@ function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; send
     const c = content.trim(); if (!c) return;
     setSending(true); setSendErr(null);
     try {
-      const res = await fetch(EDGE_URL, { method:"POST", headers:{...H,"Content-Type":"application/json"}, body:JSON.stringify({ content: withPrefix(c) }) });
+      const res = await fetch(`${EDGE_URL}?channel_id=${encodeURIComponent(channelId)}`, {
+        method:"POST", headers:{...H,"Content-Type":"application/json"},
+        body:JSON.stringify({ content: withPrefix(c) }),
+      });
       const body = await res.json();
       if (!res.ok) { setSendErr(body?.error??`Failed (${res.status})`); return; }
       if (body.message) onSent(body.message);
@@ -297,7 +345,9 @@ function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; send
       fd.append("file", file, file.name);
       const cap = caption.trim();
       if (cap) fd.append("caption", withPrefix(cap));
-      const res = await fetch(EDGE_URL, { method:"POST", headers: H, body: fd });
+      const res = await fetch(`${EDGE_URL}?channel_id=${encodeURIComponent(channelId)}`, {
+        method:"POST", headers: H, body: fd,
+      });
       const body = await res.json();
       if (!res.ok) { setSendErr(body?.error??`Upload failed (${res.status})`); return; }
       if (body.message) onSent(body.message);
@@ -340,9 +390,6 @@ function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; send
 
   const busy = sending || uploading;
   const canSend = !busy && (pendingFile !== null || value.trim().length > 0);
-  const placeholder = pendingFile
-    ? "Add a caption (optional)…"
-    : senderName ? `Message as ${senderName}…` : "Message #general";
 
   return (
     <div style={{flexShrink:0, borderTop:"1px solid hsl(var(--surface-border))", backgroundColor:"hsl(var(--surface))", position:"relative"}}>
@@ -364,7 +411,8 @@ function MessageInput({ onSent, senderName }: { onSent:(msg:Message)=>void; send
       <div style={{padding:"8px 12px 0"}}>
         <div style={{backgroundColor:"hsl(var(--surface-raised))",border:"1px solid hsl(var(--surface-border))",padding:"7px 10px"}}>
           <textarea ref={taRef} value={value} onChange={onInput} onKeyDown={onKey}
-            placeholder={placeholder} disabled={busy} rows={1}
+            placeholder={pendingFile ? "Add a caption (optional)…" : senderName ? `Message as ${senderName}…` : "Send a message…"}
+            disabled={busy} rows={1}
             style={{display:"block",width:"100%",boxSizing:"border-box",resize:"none",background:"none",border:"none",outline:"none",fontFamily:"'DM Sans',sans-serif",fontSize:"13px",color:"hsl(var(--foreground))",lineHeight:1.45,minHeight:"20px",maxHeight:"120px",overflowY:"auto",padding:0,opacity:busy?.5:1}}/>
         </div>
       </div>
@@ -413,8 +461,28 @@ export function DiscordFeed() {
   const [searchErr, setSearchErr] = useState<string|null>(null);
   const [searchTotal, setSearchTotal] = useState(0);
 
-  // Derive first name from profile for bot message attribution.
-  // Gracefully null when Supabase isn't configured (Bolt preview) or no profile row exists.
+  // ─── Channel state ────────────────────────────────────────────────────────
+  const [channels, setChannels] = useState<DiscordChannel[]>([]);
+  const [activeChannel, setActiveChannel] = useState<DiscordChannel>({ id: DEFAULT_CHANNEL_ID, name: "general", type: 0 });
+  const [showChannelPicker, setShowChannelPicker] = useState(false);
+  const channelBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Load channel list once on mount
+  useEffect(() => {
+    fetch(`${EDGE_URL}?action=list-channels`, { headers: H })
+      .then(r => r.json())
+      .then(body => {
+        const list: DiscordChannel[] = body.channels ?? [];
+        if (list.length > 0) {
+          setChannels(list);
+          // Sync active channel name from the list (the default ID is correct, name may differ)
+          const match = list.find(c => c.id === DEFAULT_CHANNEL_ID);
+          if (match) setActiveChannel(match);
+        }
+      })
+      .catch(() => { /* non-fatal — falls back to default */ });
+  }, []);
+
   const profile = useProfile();
   const senderName = profile?.full_name ? profile.full_name.trim().split(/\s+/)[0] : null;
 
@@ -432,15 +500,16 @@ export function DiscordFeed() {
     }
   }, [messages]);
 
-  async function fetchMessages(quiet = false) {
+  async function fetchMessages(quiet = false, channelOverride?: string) {
+    const cid = channelOverride ?? activeChannel.id;
     if (!quiet) setLoading(true); setError(null);
     try {
-      const res = await fetch(`${EDGE_URL}?limit=50`, { headers: H });
+      const res = await fetch(`${EDGE_URL}?limit=50&channel_id=${encodeURIComponent(cid)}`, { headers: H });
       const body = await res.json();
       if (!res.ok) {
         let d: {code?:number;message?:string}|null=null;
         try{d=JSON.parse(body.discord_detail);}catch{/**/}
-        if(res.status===403||d?.code===50001) setError("Bot needs access to #general.");
+        if(res.status===403||d?.code===50001) setError(`Bot needs access to #${activeChannel.name}.`);
         else setError(`Discord error ${res.status}${d?.message?`: ${d.message}`:""}`);
         return;
       }
@@ -456,13 +525,27 @@ export function DiscordFeed() {
     finally { setLoading(false); }
   }
 
+  // Switch channel: clear messages and reload
+  function switchChannel(ch: DiscordChannel) {
+    setActiveChannel(ch);
+    setMessages([]);
+    setHasMore(true);
+    setError(null);
+    setIntentGap(false);
+    prevIdRef.current = null;
+    setSearchOpen(false);
+    setSearchQ("");
+    setSearchResults(null);
+    fetchMessages(false, ch.id);
+  }
+
   async function loadMore() {
     if (loadingMore || !hasMore || messages.length === 0) return;
     const oldest = messages[0].id; setLoadingMore(true);
     prependHeightRef.current = scrollRef.current?.scrollHeight ?? 0;
     isPrependRef.current = true;
     try {
-      const res = await fetch(`${EDGE_URL}?limit=50&before=${oldest}`, { headers: H });
+      const res = await fetch(`${EDGE_URL}?limit=50&before=${oldest}&channel_id=${encodeURIComponent(activeChannel.id)}`, { headers: H });
       const body = await res.json();
       if (!res.ok) { isPrependRef.current = false; return; }
       const older: Message[] = body.messages ?? [];
@@ -477,7 +560,7 @@ export function DiscordFeed() {
     q = q.trim(); if (!q) { setSearchResults(null); setSearchErr(null); return; }
     setSearchLoading(true); setSearchErr(null);
     try {
-      const res = await fetch(`${EDGE_URL}?action=search&q=${encodeURIComponent(q)}`, { headers: H });
+      const res = await fetch(`${EDGE_URL}?action=search&q=${encodeURIComponent(q)}&channel_id=${encodeURIComponent(activeChannel.id)}`, { headers: H });
       const body = await res.json();
       if (!res.ok) { setSearchErr(`Search failed (${res.status})`); setSearchResults([]); return; }
       setSearchResults(body.messages ?? []); setSearchTotal(body.total ?? 0);
@@ -504,7 +587,7 @@ export function DiscordFeed() {
     if (!hasFetchedRef.current) { hasFetchedRef.current=true; fetchMessages(); }
     const id = setInterval(()=>fetchMessages(true), POLL_MS);
     return ()=>clearInterval(id);
-  }, []);
+  }, [activeChannel.id]);
 
   useEffect(() => {
     if (open) { setNewCount(0); setTimeout(()=>{if(scrollRef.current)scrollRef.current.scrollTop=scrollRef.current.scrollHeight;},80); }
@@ -529,13 +612,30 @@ export function DiscordFeed() {
   return (
     <>
       <div style={{position:"fixed",top:"56px",right:0,bottom:0,width:"360px",zIndex:200,display:"flex",flexDirection:"column",backgroundColor:"hsl(var(--surface))",borderLeft:"1px solid hsl(var(--surface-border))",transform:open?"translateX(0)":"translateX(100%)",transition:"transform 0.25s cubic-bezier(0.4,0,0.2,1)",boxShadow:open?"-8px 0 32px rgba(10,20,40,0.22)":"none"}}>
-        <div style={{height:"44px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:"1px solid hsl(var(--surface-border))",backgroundColor:"hsl(var(--nav-bg))"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.053a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.026c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
-            <span style={{fontFamily:"'DM Mono',monospace",fontSize:"10px",letterSpacing:"0.12em",textTransform:"uppercase",color:"hsl(var(--nav-text))",fontWeight:500}}>#general</span>
-            {!searchOpen&&<span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",opacity:.45}}>— live</span>}
+
+        {/* ── Panel header ── */}
+        <div style={{height:"44px",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 14px",borderBottom:"1px solid hsl(var(--surface-border))",backgroundColor:"hsl(var(--nav-bg))",position:"relative"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"6px",flex:1,minWidth:0}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="#5865F2" style={{flexShrink:0}}><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.053a19.9 19.9 0 0 0 5.993 3.03.077.077 0 0 0 .084-.026c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+
+            {/* Channel name — clickable to open picker if channels are loaded */}
+            <button ref={channelBtnRef} onClick={()=>setShowChannelPicker(s=>!s)}
+              disabled={channels.length === 0}
+              style={{display:"flex",alignItems:"center",gap:"4px",background:"none",border:"none",cursor:channels.length>0?"pointer":"default",padding:"2px 4px",borderRadius:"2px",minWidth:0,flexShrink:1}}
+              onMouseEnter={e=>{if(channels.length>0)(e.currentTarget as HTMLButtonElement).style.backgroundColor="hsl(var(--surface-raised))";}}
+              onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.backgroundColor="transparent";}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:"11px",letterSpacing:"0.1em",textTransform:"uppercase",color:"hsl(var(--nav-text))",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>#{activeChannel.name}</span>
+              {channels.length > 0 && (
+                <svg width="8" height="8" viewBox="0 0 10 10" fill="none" style={{flexShrink:0,opacity:.5}}>
+                  <path d="M2 3.5l3 3 3-3" stroke="hsl(var(--muted-foreground))" strokeWidth="1.5" strokeLinecap="square"/>
+                </svg>
+              )}
+            </button>
+
+            {!searchOpen && <span style={{fontFamily:"'DM Mono',monospace",fontSize:"9px",color:"hsl(var(--muted-foreground))",opacity:.4,flexShrink:0}}>live</span>}
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:"2px"}}>
+
+          <div style={{display:"flex",alignItems:"center",gap:"2px",flexShrink:0}}>
             <button onClick={()=>{setSearchOpen(s=>{if(s){setSearchQ("");setSearchResults(null);setSearchErr(null);}return !s;});}} aria-label="Search" style={{width:"28px",height:"28px",display:"flex",alignItems:"center",justifyContent:"center",color:searchOpen?"hsl(var(--foreground))":"hsl(var(--muted-foreground))",background:searchOpen?"hsl(var(--surface-raised))":"none",border:"none",cursor:"pointer",padding:0,opacity:.75,borderRadius:"2px"}}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             </button>
@@ -546,7 +646,18 @@ export function DiscordFeed() {
               <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="square"/></svg>
             </button>
           </div>
+
+          {/* Channel picker dropdown */}
+          {showChannelPicker && channels.length > 0 && (
+            <ChannelPicker
+              channels={channels}
+              activeId={activeChannel.id}
+              onSelect={switchChannel}
+              onClose={()=>setShowChannelPicker(false)}
+            />
+          )}
         </div>
+
         {searchOpen && (
           <div style={{padding:"8px 12px",borderBottom:"1px solid hsl(var(--surface-border))",backgroundColor:"hsl(var(--surface-raised))",display:"flex",flexDirection:"column",gap:"4px"}}>
             <div style={{display:"flex",alignItems:"center",gap:"8px",backgroundColor:"hsl(var(--surface))",border:"1px solid hsl(var(--surface-border))",padding:"5px 10px"}}>
@@ -583,7 +694,7 @@ export function DiscordFeed() {
             return <MsgRow key={item.msg.id} msg={item.msg} isSearch={inSearch}/>;
           })}
         </div>
-        {!searchOpen && <MessageInput onSent={handleSent} senderName={senderName}/>}
+        {!searchOpen && <MessageInput onSent={handleSent} senderName={senderName} channelId={activeChannel.id}/>}
       </div>
       {open&&<div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:199,backgroundColor:"rgba(10,20,40,0.2)"}}/>}
       {!open&&(
