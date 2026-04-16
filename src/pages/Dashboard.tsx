@@ -182,11 +182,9 @@ export default function Dashboard() {
           {/* Source breakdown — donut fills the card on desktop */}
           <ChartCard title="Prospects by Source" onExpand={() => setDrill("source")}>
             <div className="flex items-center gap-5 h-full">
-              {/* Constrain donut to a square that fills available card height on desktop */}
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
                 <SvgDonutChart slices={sourceSlices} size={140} thickness={28} />
               </div>
-              {/* Mobile keeps original compact size */}
               <div className="md:hidden">
                 <SvgDonutChart slices={sourceSlices} size={96} thickness={20} />
               </div>
@@ -196,7 +194,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-          {/* Client status donut — same treatment */}
+          {/* Client status donut */}
           <ChartCard title="Client Health" onExpand={() => setDrill("client_status")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
@@ -427,12 +425,12 @@ function ChartCard({ title, onExpand, children }: { title: string; onExpand?: ()
 
 function Legend({ slices }: { slices: { label: string; value: number; color: string }[] }) {
   return (
-    <div className="flex-1 min-w-0 space-y-2">
+    <div className="space-y-2">
       {slices.map(s => (
-        <div key={s.label} className="flex items-center gap-2 min-w-0">
+        <div key={s.label} className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: s.color }} />
-          <span className="font-mono text-[8.5px] tracking-[0.08em] uppercase truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{s.label.replace(/_/g, " ")}</span>
-          <span className="font-display text-sm ml-auto flex-shrink-0 pl-2" style={{ color: "hsl(var(--foreground))" }}>{s.value}</span>
+          <span className="font-mono text-[8.5px] tracking-[0.08em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>{s.label.replace(/_/g, " ")}</span>
+          <span className="font-display text-sm ml-2 flex-shrink-0" style={{ color: "hsl(var(--foreground))" }}>{s.value}</span>
         </div>
       ))}
     </div>
