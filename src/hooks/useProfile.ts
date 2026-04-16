@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useSession } from "@/context/SessionContext";
+import { useProfileContext } from "@/context/ProfileContext";
 
 export interface Profile {
   id: string;
@@ -19,60 +20,47 @@ export interface UserMembership {
 export const BUILTFOR_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
- * Fetches the authenticated user's profile using the session already resolved
- * by AuthGate via SessionContext. Consuming the session from context eliminates
- * the getSession() race where auth.uid() is null on first render.
+ * Returns the resolved profile from ProfileContext.
  *
- * Re-runs whenever the session changes (login / logout / token refresh).
- * Clears profile on sign-out (session = null).
+ * The profile is fetched once at the AuthGate level and held in context,
+ * so it survives page navigation without re-fetching or flickering.
+ * OpsShell and all other consumers call this hook unchanged.
  */
 export function useProfile(): Profile | null {
-  const session = useSession();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  return useProfileContext();
+}
 
-  useEffect(() => {
-    // Clear profile immediately on sign-out
-    if (!session) {
-      setProfile(null);
-      return;
-    }
+/**
+ * Fetches the profile for a given user ID from Supabase.
+ * Called by AuthGate — not by component hooks directly.
+ * Dependency is user ID only, not the session object, so token refreshes
+ * (which produce a new session object reference) do not trigger re-fetches.
+ */
+export async function fetchProfile(uid: string): Promise<Profile | null> {
+  const SUPABASE_CONFIGURED =
+    !!import.meta.env.VITE_SUPABASE_URL &&
+    import.meta.env.VITE_SUPABASE_URL !== 'https://placeholder.supabase.co';
 
-    const uid = session.user?.id;
-    if (!uid) return;
+  if (!SUPABASE_CONFIGURED) return null;
 
-    const SUPABASE_CONFIGURED =
-      !!import.meta.env.VITE_SUPABASE_URL &&
-      import.meta.env.VITE_SUPABASE_URL !== 'https://placeholder.supabase.co';
+  const { data: row } = await supabase
+    .from('profiles')
+    .select('id, full_name, role, tenant_id')
+    .eq('id', uid)
+    .maybeSingle();
 
-    if (!SUPABASE_CONFIGURED) return;
+  if (!row) return null;
 
-    supabase
-      .from('profiles')
-      .select('id, full_name, role, tenant_id')
-      .eq('id', uid)
-      .maybeSingle()
-      .then(({ data: row }) => {
-        if (!row) return;
+  if (!row.tenant_id) {
+    const { data: membership } = await supabase
+      .from('user_memberships')
+      .select('tenant_id')
+      .eq('user_id', uid)
+      .maybeSingle();
+    row.tenant_id = membership?.tenant_id ?? BUILTFOR_TENANT_ID;
+  }
 
-        // Fallback: resolve tenant_id from user_memberships if missing on profile row
-        if (!row.tenant_id) {
-          supabase
-            .from('user_memberships')
-            .select('tenant_id')
-            .eq('user_id', uid)
-            .maybeSingle()
-            .then(({ data: membership }) => {
-              row.tenant_id = membership?.tenant_id ?? BUILTFOR_TENANT_ID;
-              setProfile(row as Profile);
-            });
-          return;
-        }
-
-        setProfile(row as Profile);
-      });
-  }, [session]);
-
-  return profile;
+  return row as Profile;
 }
 
 /**
