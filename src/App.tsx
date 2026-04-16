@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { supabase } from "@/lib/supabase";
+import { ensureMembership, BUILTFOR_TENANT_ID } from "@/hooks/useProfile";
 import type { Session } from "@supabase/supabase-js";
 import Dashboard from "./pages/Dashboard";
 import Pipeline from "./pages/Pipeline";
@@ -39,11 +40,32 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
+
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
       setSession(s);
-      if (event === "SIGNED_OUT") queryClient.clear();
+      if (event === "SIGNED_OUT") {
+        queryClient.clear();
+        return;
+      }
+      // On sign-in or token refresh, ensure membership row exists.
+      // This is idempotent — safe on every auth event. Covers:
+      //   • First login after migration (row already seeded, upsert is no-op)
+      //   • Any future new operator added via Supabase Auth admin
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && s?.user?.id) {
+        // Resolve role from profiles if available, fall back to tenant_owner
+        // for the platform operator (only role that can access this app).
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", s.user.id)
+          .maybeSingle();
+        const role = profile?.role ?? "tenant_owner";
+        await ensureMembership(s.user.id, BUILTFOR_TENANT_ID, role);
+      }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
