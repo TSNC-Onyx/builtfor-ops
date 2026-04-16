@@ -35,13 +35,22 @@ const SUPABASE_CONFIGURED =
   import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
 
 // ---------------------------------------------------------------------------
-// AuthGate
-// Single source of session truth via onAuthStateChange (Supabase JS v2 pattern).
-// INITIAL_SESSION fires on subscription setup and restores the session from
-// localStorage synchronously — no getSession() race.
+// AuthGate — session management
 //
-// Sign-out flow: supabase.auth.signOut() triggers SIGNED_OUT here, which sets
-// session = null and renders <Login /> automatically. No manual navigation needed.
+// Pattern validated against Supabase JS v2 source and community docs:
+//
+// 1. getSession() initialises session state. It handles token refresh
+//    internally before resolving, so the returned session is always valid
+//    or null (never an expired token).
+//
+// 2. onAuthStateChange listens for subsequent events (SIGNED_IN, SIGNED_OUT,
+//    TOKEN_REFRESHED) after initial load. INITIAL_SESSION is ignored here
+//    because getSession() already covers it — and INITIAL_SESSION can fire
+//    with null on the first tick when a token refresh is in flight, which
+//    would incorrectly flash <Login /> before the refreshed session arrives.
+//
+// 3. setSession is always called before any awaits to ensure React state
+//    updates are not deferred by async side-effects.
 // ---------------------------------------------------------------------------
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(
@@ -51,9 +60,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
 
+    // Step 1: initialise from storage (handles token refresh internally)
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+    });
+
+    // Step 2: listen for subsequent auth events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, s) => {
-        // setSession is always first — no awaits before this line.
+        // Skip INITIAL_SESSION — getSession() above handles initialisation.
+        // Responding to INITIAL_SESSION here risks overwriting a valid
+        // in-flight token refresh with a null session.
+        if (event === "INITIAL_SESSION") return;
+
+        // For all other events, update session immediately — no awaits first.
         setSession(s);
 
         if (event === "SIGNED_OUT") {
@@ -61,8 +81,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // ensureMembership on SIGNED_IN only — not TOKEN_REFRESHED.
-        // try/catch ensures a failure here never blocks session state.
+        // Ensure membership row on SIGNED_IN. Non-fatal if it fails.
         if (event === "SIGNED_IN" && s?.user?.id) {
           try {
             const { data: profile } = await supabase
