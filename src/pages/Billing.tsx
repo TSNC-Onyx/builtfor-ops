@@ -4,7 +4,7 @@ import { OpsShell } from "@/components/ops/OpsShell";
 import { MetricsBar } from "@/components/ops/MetricsBar";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 import { useClients } from "@/hooks/useClients";
-import { useProspects } from "@/hooks/useProspects";
+import { useAllProspects } from "@/hooks/useProspects";
 import {
   useClientBillingViews,
   useSubscriptions,
@@ -55,7 +55,9 @@ function eventTypeColor(t: string): string {
 
 export default function Billing() {
   const { data: clients = [], isLoading: cLoading } = useClients();
-  const { data: prospects = [] } = useProspects();
+  // MetricsBar requires full prospect set (incl. closed_won) for accurate
+  // founding spots count — matches Dashboard, Pipeline, and Clients behaviour.
+  const { data: prospects = [] } = useAllProspects();
   const { data: allSubs = [], isLoading: sLoading } = useSubscriptions();
   const { data: allEvents = [], isLoading: eLoading } = useBillingEvents();
   const billingViews = useClientBillingViews(clients);
@@ -289,10 +291,6 @@ function ClientBillingDetail({
   const sub = view.subscription;
   const stripeCustomerId = sub?.stripe_customer_id ?? null;
 
-  // Payment method data fetched here — closest stateful ancestor that owns
-  // both the data need and the Update callback. Kept at this level per
-  // Constitution §Presentation rule: hooks that fetch data for display
-  // are permitted in components; service mutation callbacks flow up.
   const { data: pm, isLoading: pmLoading, isError: pmError } = usePaymentMethod(stripeCustomerId);
   const [portalLoading, setPortalLoading] = useState(false);
 
@@ -302,7 +300,6 @@ function ClientBillingDetail({
       return;
     }
     setPortalLoading(true);
-    // Mutation delegated to service — component only triggers and handles response
     const result = await createCustomerPortalSession(stripeCustomerId, window.location.href);
     setPortalLoading(false);
     if (result?.url) {
@@ -319,8 +316,6 @@ function ClientBillingDetail({
 
   return (
     <div className="space-y-5">
-
-      {/* ── PAYMENT METHOD ── */}
       <PaymentMethodDisplay
         stripeCustomerId={stripeCustomerId}
         pm={pm}
@@ -329,14 +324,10 @@ function ClientBillingDetail({
         portalLoading={portalLoading}
         onUpdate={handleUpdatePaymentMethod}
       />
-
-      {/* ── SUBSCRIPTION ── */}
       <section>
         <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Subscription</div>
         <SubscriptionBlock sub={sub} onAction={onAction} actionLoading={actionLoading} />
       </section>
-
-      {/* ── SETUP FEE ── */}
       <section>
         <div className="font-mono text-[9px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--muted-foreground))" }}>Setup Fee</div>
         <div
@@ -362,8 +353,6 @@ function ClientBillingDetail({
           )}
         </div>
       </section>
-
-      {/* ── INVOICE HISTORY ── */}
       <InvoiceHistorySection
         events={view.billing_events}
         totalCollected={view.total_collected_cents}
@@ -372,11 +361,6 @@ function ClientBillingDetail({
   );
 }
 
-/**
- * PaymentMethodDisplay — pure display component.
- * Receives all data and callbacks as props.
- * Calls no services, computes no domain state.
- */
 function PaymentMethodDisplay({
   stripeCustomerId, pm, isLoading, isError, portalLoading, onUpdate,
 }: {
