@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import type { Client } from "@/types/pipeline";
 import type { Subscription } from "@/types/billing";
@@ -8,12 +9,11 @@ export interface ClientWithSubscription extends Client {
   subscription: Subscription | null;
 }
 
+// READ: direct query — RLS enforces tenant scope at DB level.
 export function useClients() {
   return useQuery({
     queryKey: ["clients"],
     queryFn: async () => {
-      // Join subscriptions so MRR and rate displays read from actual DB values,
-      // never from hardcoded tier assumptions.
       const { data, error } = await supabase
         .from("clients")
         .select(`
@@ -25,13 +25,40 @@ export function useClients() {
         `)
         .order("created_at", { ascending: false });
       if (error) throw error;
-
-      // Supabase returns subscriptions as an array (one-to-many shape).
-      // Normalise to a single subscription or null.
       return (data ?? []).map((row: Client & { subscriptions: Subscription[] }) => ({
         ...row,
         subscription: row.subscriptions?.[0] ?? null,
       })) as ClientWithSubscription[];
     },
+  });
+}
+
+// WRITE: routes through client-mutations service layer Edge Function.
+async function invokeWithAuth(fn: string, body: Record<string, unknown>) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Not authenticated");
+  const { data, error } = await supabase.functions.invoke(fn, {
+    body,
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  if (error) throw new Error(error.message);
+  if (!data?.ok) throw new Error(data?.title ?? "Service error");
+  return data.data;
+}
+
+export function useUpdateClient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Client> }) =>
+      invokeWithAuth("client-mutations", {
+        client_id: id,
+        updates,
+        idempotency_key: `client_update_${id}_${Date.now()}`,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      toast.success("Client saved.");
+    },
+    onError: (e: Error) => toast.error(`Save failed: ${e.message}`),
   });
 }
