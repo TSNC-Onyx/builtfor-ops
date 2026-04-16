@@ -1,109 +1,101 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type ServiceState = "operational" | "degraded" | "outage" | "unknown";
+// "fetch_error" is a distinct server-side state returned by the Edge Function
+// when a vendor API was unreachable. Kept separate from "unknown" so the UI
+// can render it differently — a confirmed unreachable vendor looks different
+// from a not-yet-loaded state.
+type ServiceState = "operational" | "degraded" | "outage" | "fetch_error";
+
+// "loading" is a client-only state used only before the first successful
+// proxy response. It is never returned by the Edge Function.
+type DisplayState = ServiceState | "loading";
 
 interface ServiceStatus {
   name: string;
   state: ServiceState;
-  description: string; // human-readable detail from the status page
-  url: string;         // link to the vendor status page
-  checkedAt: Date | null;
+  description: string;
+  url: string;
+  live: boolean; // true = came from live vendor API; false = proxy error fallback
+}
+
+interface ProxyPayload {
+  services: ServiceStatus[];
+  checkedAt: string; // ISO timestamp from the Edge Function server clock
 }
 
 // ---------------------------------------------------------------------------
 // Colour tokens — matched to brand spec
 // ---------------------------------------------------------------------------
-const STATE_COLOR: Record<ServiceState, string> = {
+const STATE_COLOR: Record<DisplayState, string> = {
   operational: "hsl(145,50%,40%)",
   degraded:    "hsl(38,90%,50%)",
-  outage:      "hsl(20,63%,47%)",  // rust
-  unknown:     "hsl(216,21%,62%)", // steel
+  outage:      "hsl(20,63%,47%)",   // rust
+  fetch_error: "hsl(38,90%,50%)",   // amber — "we don't know" ≠ "everything is fine"
+  loading:     "hsl(216,21%,62%)",  // steel — visually inert until data arrives
 };
 
-const STATE_LABEL: Record<ServiceState, string> = {
+const STATE_LABEL: Record<DisplayState, string> = {
   operational: "Operational",
   degraded:    "Degraded",
   outage:      "Outage",
-  unknown:     "Unknown",
+  fetch_error: "Unreachable",
+  loading:     "—",
 };
 
-// ---------------------------------------------------------------------------
-// Status API fetchers
-// Each vendor exposes a JSON status summary endpoint.
-// Atlassian Statuspage (used by Supabase, Cloudflare, GitHub) returns:
-//   { status: { indicator: "none"|"minor"|"major"|"critical" } }
-// ---------------------------------------------------------------------------
-function indicatorToState(indicator: string): ServiceState {
-  if (indicator === "none")     return "operational";
-  if (indicator === "minor")    return "degraded";
-  if (indicator === "major")    return "outage";
-  if (indicator === "critical") return "outage";
-  return "unknown";
-}
+// Supabase project ref is stable — not a secret, safe in client code.
+const PROXY_URL =
+  "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/platform-status";
 
-async function fetchAtlassianStatus(
-  summaryUrl: string
-): Promise<{ state: ServiceState; description: string }> {
-  const res = await fetch(summaryUrl, { signal: AbortSignal.timeout(8000) });
-  if (!res.ok) return { state: "unknown", description: "Status page unavailable" };
-  const json = await res.json();
-  const indicator: string = json?.status?.indicator ?? "";
-  const description: string = json?.status?.description ?? "All systems operational";
-  return { state: indicatorToState(indicator), description };
-}
-
-// ---------------------------------------------------------------------------
-// Service definitions
-// ---------------------------------------------------------------------------
-const SERVICES: Omit<ServiceStatus, "state" | "description" | "checkedAt">[] = [
-  {
-    name: "Supabase",
-    url: "https://status.supabase.com",
-  },
-  {
-    name: "Cloudflare",
-    url: "https://www.cloudflarestatus.com",
-  },
-  {
-    name: "GitHub",
-    url: "https://www.githubstatus.com",
-  },
-];
-
-// Atlassian Statuspage summary JSON endpoints
-const STATUS_ENDPOINTS: Record<string, string> = {
-  Supabase:   "https://status.supabase.com/api/v2/status.json",
-  Cloudflare: "https://www.cloudflarestatus.com/api/v2/status.json",
-  GitHub:     "https://www.githubstatus.com/api/v2/status.json",
-};
+// If the last successful check is older than this, show a stale-data warning.
+const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 function usePlatformStatus(intervalMs = 60_000) {
-  const [statuses, setStatuses] = useState<ServiceStatus[]>(
-    SERVICES.map(s => ({ ...s, state: "unknown", description: "Checking…", checkedAt: null }))
-  );
+  const [statuses, setStatuses] = useState<ServiceStatus[] | null>(null);
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [proxyError, setProxyError] = useState<string | null>(null);
+  // Ref prevents double-fetch in React StrictMode / HMR without useEffect deps churn
+  const inFlight = useRef(false);
 
   const check = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setIsChecking(true);
-    const results = await Promise.all(
-      SERVICES.map(async s => {
-        try {
-          const { state, description } = await fetchAtlassianStatus(STATUS_ENDPOINTS[s.name]);
-          return { ...s, state, description, checkedAt: new Date() } as ServiceStatus;
-        } catch {
-          return { ...s, state: "unknown" as ServiceState, description: "Check failed", checkedAt: new Date() };
-        }
-      })
-    );
-    setStatuses(results);
-    setIsChecking(false);
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+
+      const res = await fetch(PROXY_URL, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        setProxyError(`Proxy returned HTTP ${res.status}`);
+      } else {
+        const payload: ProxyPayload = await res.json();
+        setStatuses(payload.services);
+        setCheckedAt(new Date(payload.checkedAt));
+        setProxyError(null);
+      }
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === "AbortError";
+      setProxyError(isTimeout ? "Proxy timed out" : "Proxy unreachable");
+    } finally {
+      setIsChecking(false);
+      inFlight.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -112,26 +104,49 @@ function usePlatformStatus(intervalMs = 60_000) {
     return () => clearInterval(id);
   }, [check, intervalMs]);
 
-  return { statuses, isChecking, refresh: check };
+  const isStale =
+    checkedAt !== null &&
+    Date.now() - checkedAt.getTime() > STALE_THRESHOLD_MS;
+
+  return { statuses, checkedAt, isChecking, proxyError, isStale, refresh: check };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function worstState(statuses: ServiceStatus[]): DisplayState {
+  const rank: Record<DisplayState, number> = {
+    loading:     0,
+    operational: 1,
+    fetch_error: 2,
+    degraded:    3,
+    outage:      4,
+  };
+  return statuses.reduce<DisplayState>((worst, s) => {
+    return rank[s.state] > rank[worst] ? s.state : worst;
+  }, "operational");
+}
+
+function fmtTime(d: Date) {
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export function PlatformStatus() {
-  const { statuses, isChecking, refresh } = usePlatformStatus();
+  const { statuses, checkedAt, isChecking, proxyError, isStale, refresh } =
+    usePlatformStatus();
   const [open, setOpen] = useState(false);
 
-  // Overall state = worst of the three
-  const overallState: ServiceState = statuses.reduce<ServiceState>((worst, s) => {
-    const rank: Record<ServiceState, number> = { operational: 0, unknown: 1, degraded: 2, outage: 3 };
-    return rank[s.state] > rank[worst] ? s.state : worst;
-  }, "operational");
+  const isLoading = statuses === null && !proxyError;
 
-  const lastChecked = statuses.find(s => s.checkedAt)?.checkedAt;
-  const lastCheckedStr = lastChecked
-    ? lastChecked.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : null;
+  // Overall badge state
+  const overallState: DisplayState = isLoading
+    ? "loading"
+    : proxyError
+    ? "fetch_error"
+    : worstState(statuses!);
 
   return (
     <>
@@ -143,7 +158,7 @@ export function PlatformStatus() {
           borderBottom: "1px solid hsl(var(--surface-border))",
         }}
       >
-        {/* Left: label + pills */}
+        {/* Left: label + per-service pills */}
         <div className="flex items-center gap-3 flex-wrap">
           <span
             className="font-mono text-[8.5px] tracking-[0.14em] uppercase flex-shrink-0"
@@ -152,56 +167,95 @@ export function PlatformStatus() {
             Platform
           </span>
 
-          {statuses.map(s => (
-            <span
-              key={s.name}
-              className="flex items-center gap-1.5"
-            >
-              {/* Status dot */}
+          {isLoading ? (
+            // Skeleton pills while waiting for first proxy response
+            ["Supabase", "Cloudflare", "GitHub"].map(name => (
+              <span key={name} className="flex items-center gap-1.5">
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse"
+                  style={{ backgroundColor: STATE_COLOR.loading }}
+                />
+                <span
+                  className="font-mono text-[8.5px] tracking-[0.08em] uppercase"
+                  style={{ color: "hsl(var(--muted-foreground))", opacity: 0.5 }}
+                >
+                  {name}
+                </span>
+              </span>
+            ))
+          ) : proxyError ? (
+            // Proxy itself failed — single "check failed" pill, amber not steel
+            <span className="flex items-center gap-1.5">
               <span
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: STATE_COLOR[s.state] }}
+                style={{ backgroundColor: STATE_COLOR.fetch_error }}
               />
               <span
                 className="font-mono text-[8.5px] tracking-[0.08em] uppercase"
-                style={{ color: "hsl(var(--muted-foreground))" }}
+                style={{ color: STATE_COLOR.fetch_error }}
               >
-                {s.name}
+                Check failed
               </span>
             </span>
-          ))}
+          ) : (
+            statuses!.map(s => (
+              <span key={s.name} className="flex items-center gap-1.5">
+                <span
+                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: STATE_COLOR[s.state] }}
+                />
+                <span
+                  className="font-mono text-[8.5px] tracking-[0.08em] uppercase"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  {s.name}
+                </span>
+              </span>
+            ))
+          )}
 
-          {/* Checking spinner */}
           {isChecking && (
             <span
               className="font-mono text-[8px] tracking-[0.1em] uppercase animate-pulse"
-              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.5 }}
+              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.45 }}
             >
               checking…
             </span>
           )}
+
+          {/* Stale data warning — shown when last check is >5 min old */}
+          {isStale && !isChecking && (
+            <span
+              className="font-mono text-[8px] tracking-[0.1em] uppercase"
+              style={{ color: STATE_COLOR.degraded }}
+            >
+              stale
+            </span>
+          )}
         </div>
 
-        {/* Right: overall badge + expand */}
+        {/* Right: timestamp + overall badge + expand */}
         <div className="flex items-center gap-3 flex-shrink-0">
-          {lastCheckedStr && (
+          {checkedAt && (
             <span
               className="font-mono text-[8px] tracking-[0.08em] uppercase hidden md:block"
-              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.45 }}
+              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
             >
-              {lastCheckedStr}
+              {fmtTime(checkedAt)}
             </span>
           )}
 
-          <span
-            className="font-mono text-[8px] tracking-[0.1em] uppercase px-1.5 py-0.5"
-            style={{
-              color: STATE_COLOR[overallState],
-              border: `1px solid ${STATE_COLOR[overallState]}40`,
-            }}
-          >
-            {STATE_LABEL[overallState]}
-          </span>
+          {!isLoading && (
+            <span
+              className="font-mono text-[8px] tracking-[0.1em] uppercase px-1.5 py-0.5"
+              style={{
+                color: STATE_COLOR[overallState],
+                border: `1px solid ${STATE_COLOR[overallState]}40`,
+              }}
+            >
+              {STATE_LABEL[overallState]}
+            </span>
+          )}
 
           <button
             onClick={() => setOpen(true)}
@@ -217,13 +271,17 @@ export function PlatformStatus() {
       {open && (
         <DrillDownPanel title="Platform Status" onClose={() => setOpen(false)}>
           <div className="space-y-4">
-            {/* Refresh + last checked */}
+            {/* Header row: timestamp + refresh */}
             <div className="flex items-center justify-between">
               <span
                 className="font-mono text-[9px] tracking-[0.1em] uppercase"
                 style={{ color: "hsl(var(--muted-foreground))" }}
               >
-                {lastCheckedStr ? `Last checked ${lastCheckedStr}` : "Checking…"}
+                {isLoading
+                  ? "Checking…"
+                  : checkedAt
+                  ? `Last checked ${fmtTime(checkedAt)}${isStale ? " — stale" : ""}`
+                  : "Check failed"}
               </span>
               <button
                 onClick={refresh}
@@ -235,63 +293,109 @@ export function PlatformStatus() {
               </button>
             </div>
 
-            {/* Service rows */}
-            {statuses.map(s => (
+            {/* Proxy error banner */}
+            {proxyError && (
               <div
-                key={s.name}
-                className="flex items-start gap-3 px-3 py-3"
+                className="px-3 py-2.5"
                 style={{
-                  backgroundColor: "hsl(var(--surface-raised))",
-                  border: `1px solid ${STATE_COLOR[s.state]}30`,
-                  borderLeft: `3px solid ${STATE_COLOR[s.state]}`,
+                  border: `1px solid ${STATE_COLOR.fetch_error}40`,
+                  borderLeft: `3px solid ${STATE_COLOR.fetch_error}`,
                 }}
               >
-                {/* Dot */}
                 <span
-                  className="w-2 h-2 rounded-full mt-0.5 flex-shrink-0"
-                  style={{ backgroundColor: STATE_COLOR[s.state] }}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <span
-                      className="font-mono text-[10px] tracking-[0.1em] uppercase font-semibold"
-                      style={{ color: "hsl(var(--foreground))" }}
-                    >
-                      {s.name}
-                    </span>
-                    <span
-                      className="font-mono text-[8px] tracking-[0.1em] uppercase flex-shrink-0"
-                      style={{ color: STATE_COLOR[s.state] }}
-                    >
-                      {STATE_LABEL[s.state]}
-                    </span>
-                  </div>
-                  <p
-                    className="font-body text-[11px] mt-0.5"
-                    style={{ color: "hsl(var(--muted-foreground))" }}
-                  >
-                    {s.description}
-                  </p>
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[8px] tracking-[0.08em] uppercase mt-1 inline-block transition-opacity hover:opacity-60"
-                    style={{ color: "hsl(var(--rust))" }}
-                  >
-                    {s.url.replace("https://", "")} ↗
-                  </a>
-                </div>
+                  className="font-mono text-[9px] tracking-[0.1em] uppercase"
+                  style={{ color: STATE_COLOR.fetch_error }}
+                >
+                  Proxy error — {proxyError}
+                </span>
+                <p
+                  className="font-body text-[11px] mt-1"
+                  style={{ color: "hsl(var(--muted-foreground))" }}
+                >
+                  Status data is unavailable. Check each vendor status page directly.
+                </p>
               </div>
-            ))}
+            )}
 
-            {/* Footer note */}
+            {/* Service rows */}
+            {statuses &&
+              statuses.map(s => (
+                <div
+                  key={s.name}
+                  className="flex items-start gap-3 px-3 py-3"
+                  style={{
+                    backgroundColor: "hsl(var(--surface-raised))",
+                    border: `1px solid ${STATE_COLOR[s.state]}30`,
+                    borderLeft: `3px solid ${STATE_COLOR[s.state]}`,
+                  }}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full mt-0.5 flex-shrink-0"
+                    style={{ backgroundColor: STATE_COLOR[s.state] }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="font-mono text-[10px] tracking-[0.1em] uppercase"
+                        style={{ color: "hsl(var(--foreground))" }}
+                      >
+                        {s.name}
+                      </span>
+                      <span
+                        className="font-mono text-[8px] tracking-[0.1em] uppercase flex-shrink-0"
+                        style={{ color: STATE_COLOR[s.state] }}
+                      >
+                        {/* Distinguish "we couldn't reach the status page"
+                            from a confirmed operational/degraded/outage state */}
+                        {s.live ? STATE_LABEL[s.state] : "Unreachable"}
+                      </span>
+                    </div>
+                    <p
+                      className="font-body text-[11px] mt-0.5"
+                      style={{ color: "hsl(var(--muted-foreground))" }}
+                    >
+                      {s.description}
+                    </p>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-[8px] tracking-[0.08em] uppercase mt-1 inline-block transition-opacity hover:opacity-60"
+                      style={{ color: "hsl(var(--rust))" }}
+                    >
+                      {s.url.replace("https://", "")} ↗
+                    </a>
+                  </div>
+                </div>
+              ))}
+
+            {/* Loading skeletons in drill-down before first data */}
+            {isLoading &&
+              ["Supabase", "Cloudflare", "GitHub"].map(name => (
+                <div
+                  key={name}
+                  className="px-3 py-3 animate-pulse"
+                  style={{
+                    backgroundColor: "hsl(var(--surface-raised))",
+                    border: "1px solid hsl(var(--surface-border))",
+                    borderLeft: `3px solid ${STATE_COLOR.loading}`,
+                  }}
+                >
+                  <span
+                    className="font-mono text-[10px] tracking-[0.1em] uppercase"
+                    style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
+                  >
+                    {name}
+                  </span>
+                </div>
+              ))}
+
             <p
               className="font-mono text-[8px] tracking-[0.08em] uppercase"
               style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
             >
-              Polled every 60 seconds via vendor Statuspage APIs.
-              Alerts also route to Discord ops channel via webhook.
+              Polled every 60s via Edge Function proxy. Vendor APIs: Atlassian Statuspage v2.
+              Stale warning shown if last check exceeds 5 minutes.
             </p>
           </div>
         </DrillDownPanel>
