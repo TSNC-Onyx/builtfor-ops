@@ -6,6 +6,7 @@ import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { supabase } from "@/lib/supabase";
 import { ensureMembership, BUILTFOR_TENANT_ID } from "@/hooks/useProfile";
+import { SessionContext } from "@/context/SessionContext";
 import type { Session } from "@supabase/supabase-js";
 import Dashboard from "./pages/Dashboard";
 import Pipeline from "./pages/Pipeline";
@@ -41,6 +42,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
 
+    // Resolve session from localStorage on mount.
+    // Sets session state before any child queries can fire.
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
@@ -49,13 +52,9 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         queryClient.clear();
         return;
       }
-      // On sign-in or token refresh, ensure membership row exists.
-      // This is idempotent — safe on every auth event. Covers:
-      //   • First login after migration (row already seeded, upsert is no-op)
-      //   • Any future new operator added via Supabase Auth admin
+      // Ensure membership row exists on every sign-in / token refresh.
+      // Idempotent — safe to call repeatedly. Covers first login and future hires.
       if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && s?.user?.id) {
-        // Resolve role from profiles if available, fall back to tenant_owner
-        // for the platform operator (only role that can access this app).
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
@@ -69,6 +68,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // session === undefined: getSession() not yet resolved — show loader,
+  // hold the entire tree (including all query hooks) behind this gate.
   if (session === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "hsl(var(--background))" }}>
@@ -80,10 +81,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (!session && SUPABASE_CONFIGURED) return <Login />;
 
   return (
-    <>
+    // Provide the resolved session to all descendant hooks via context.
+    // Hooks use enabled: !!session to gate queries on auth readiness.
+    <SessionContext.Provider value={session}>
       {children}
       <DiscordFeed />
-    </>
+    </SessionContext.Provider>
   );
 }
 

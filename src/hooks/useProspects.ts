@@ -1,15 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useSession } from "@/context/SessionContext";
 import type { Prospect, ProspectStage } from "@/types/pipeline";
 
 // ---------------------------------------------------------------------------
 // READ: direct Supabase query — RLS enforces tenant scope at DB level.
-// Reads are constitution-compliant scaffold: RLS is the enforcement layer.
+// enabled: !!session gates all reads behind auth resolution, preventing the
+// post-refresh race where auth.uid() is null and RLS returns empty results.
 // ---------------------------------------------------------------------------
 export function useProspects() {
+  const session = useSession();
   return useQuery({
     queryKey: ["prospects"],
+    enabled: !!session,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("prospects")
@@ -22,10 +26,11 @@ export function useProspects() {
   });
 }
 
-// Also export a hook that includes all stages (for dashboard analytics etc.)
 export function useAllProspects() {
+  const session = useSession();
   return useQuery({
     queryKey: ["prospects", "all"],
+    enabled: !!session,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("prospects")
@@ -122,11 +127,6 @@ export function useConvertToClient() {
   });
 }
 
-/**
- * Soft-deletes a prospect by moving it to closed_lost with a required reason.
- * Routes through prospect-mutations service layer — validates reason key,
- * checks invariants, writes audit record.
- */
 export function useDismissProspect() {
   const qc = useQueryClient();
   return useMutation({

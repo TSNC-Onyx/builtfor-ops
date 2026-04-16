@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { useSession } from "@/context/SessionContext";
 import type { Client } from "@/types/pipeline";
 import type { Subscription } from "@/types/billing";
 
@@ -9,10 +10,12 @@ export interface ClientWithSubscription extends Client {
   subscription: Subscription | null;
 }
 
-// READ: direct query — RLS enforces tenant scope at DB level.
+// READ: gated on session readiness — prevents empty results on hard refresh.
 export function useClients() {
+  const session = useSession();
   return useQuery({
     queryKey: ["clients"],
+    enabled: !!session,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clients")
