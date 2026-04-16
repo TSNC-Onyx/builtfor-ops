@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
@@ -35,51 +35,57 @@ const SUPABASE_CONFIGURED =
   import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
 
 // ---------------------------------------------------------------------------
-// AuthGate — session management
+// AuthGate — authoritative session source
 //
-// Pattern validated against Supabase JS v2 source and community docs:
+// Pattern: getSession() initialises (handling token refresh internally),
+// then onAuthStateChange handles all subsequent events. A ref guard prevents
+// the race where SIGNED_IN / TOKEN_REFRESHED from onAuthStateChange fires
+// before getSession() resolves, which would cause a double-setSession and
+// potential null flash that traps the user in an empty unauthenticated state.
 //
-// 1. getSession() initialises session state. It handles token refresh
-//    internally before resolving, so the returned session is always valid
-//    or null (never an expired token).
-//
-// 2. onAuthStateChange listens for subsequent events (SIGNED_IN, SIGNED_OUT,
-//    TOKEN_REFRESHED) after initial load. INITIAL_SESSION is ignored here
-//    because getSession() already covers it — and INITIAL_SESSION can fire
-//    with null on the first tick when a token refresh is in flight, which
-//    would incorrectly flash <Login /> before the refreshed session arrives.
-//
-// 3. setSession is always called before any awaits to ensure React state
-//    updates are not deferred by async side-effects.
+// The initialised ref ensures:
+//   - getSession() always wins the initial state assignment
+//   - onAuthStateChange only updates state after initialisation is confirmed
+//   - SIGNED_OUT always clears state regardless of init order
 // ---------------------------------------------------------------------------
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(
     SUPABASE_CONFIGURED ? undefined : null
   );
+  // Tracks whether getSession() has resolved and set initial state.
+  // Prevents onAuthStateChange from overwriting the initialised state
+  // with a stale event that fired during the getSession() async window.
+  const initialised = useRef(false);
 
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
 
-    // Step 1: initialise from storage (handles token refresh internally)
+    // Step 1: getSession() resolves the current session including any
+    // in-flight token refresh. This is always the authoritative initial state.
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
+      initialised.current = true;
     });
 
-    // Step 2: listen for subsequent auth events
+    // Step 2: onAuthStateChange handles all events after initialisation.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, s) => {
-        // Skip INITIAL_SESSION — getSession() above handles initialisation.
-        // Responding to INITIAL_SESSION here risks overwriting a valid
-        // in-flight token refresh with a null session.
-        if (event === "INITIAL_SESSION") return;
-
-        // For all other events, update session immediately — no awaits first.
-        setSession(s);
-
+        // SIGNED_OUT must always be processed — even before init — to handle
+        // the case where the session is invalidated server-side during load.
         if (event === "SIGNED_OUT") {
+          initialised.current = true;
+          setSession(null);
           queryClient.clear();
           return;
         }
+
+        // All other events are held until getSession() has resolved.
+        // This prevents a TOKEN_REFRESHED or SIGNED_IN event from firing
+        // before getSession() completes and overwriting it with a duplicate
+        // or out-of-order state update.
+        if (!initialised.current) return;
+
+        setSession(s);
 
         // Ensure membership row on SIGNED_IN. Non-fatal if it fails.
         if (event === "SIGNED_IN" && s?.user?.id) {
