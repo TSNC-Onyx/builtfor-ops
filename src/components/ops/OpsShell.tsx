@@ -190,7 +190,6 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
             <span className="font-mono text-[9px] tracking-[0.12em] uppercase">Sign out</span>
-          </span>
           </button>
         </div>
       </div>
