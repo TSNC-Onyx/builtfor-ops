@@ -94,6 +94,13 @@ export default function Dashboard() {
     label: k, value: v, color: statusColors[k] ?? STEEL,
   }));
 
+  // Pipeline Funnel steps: active stages in order, then closed_won (NAVY), then closed_lost (STEEL) at bottom
+  const funnelSteps = STAGE_ORDER.map(s => ({
+    label: STAGE_LABELS[s],
+    count: metrics.stageCounts[s] ?? 0,
+    color: s === "closed_lost" ? STEEL : s === "closed_won" ? NAVY : RUST,
+  }));
+
   return (
     <OpsShell>
       <MetricsBar prospects={prospects} clients={clients} />
@@ -166,20 +173,14 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* --- CHARTS GRID --- */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Pipeline funnel */}
+        {/* --- CHARTS ROW 1: 3-col on lg, stacked below --- */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+          {/* Pipeline Funnel — includes closed_lost at bottom in STEEL */}
           <ChartCard title="Pipeline Funnel" onExpand={() => setDrill("funnel")}>
-            <SvgFunnelChart
-              steps={STAGE_ORDER.filter(s => s !== "closed_lost").map(s => ({
-                label: STAGE_LABELS[s],
-                count: metrics.stageCounts[s] ?? 0,
-                color: s === "closed_won" ? NAVY : RUST,
-              }))}
-            />
+            <SvgFunnelChart steps={funnelSteps} />
           </ChartCard>
 
-          {/* Source breakdown — donut fills the card on desktop */}
+          {/* Prospects by Source */}
           <ChartCard title="Prospects by Source" onExpand={() => setDrill("source")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
@@ -191,10 +192,8 @@ export default function Dashboard() {
               <Legend slices={sourceSlices} />
             </div>
           </ChartCard>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-          {/* Client status donut */}
+          {/* Client Health */}
           <ChartCard title="Client Health" onExpand={() => setDrill("client_status")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
@@ -206,17 +205,25 @@ export default function Dashboard() {
               <Legend slices={statusSlices} />
             </div>
           </ChartCard>
+        </div>
 
-          {/* Stage breakdown bar */}
-          <ChartCard title="Stage Counts" onExpand={() => setDrill("pipeline_breakdown")}>
-            <SvgFunnelChart
-              steps={STAGE_ORDER.map(s => ({
-                label: STAGE_LABELS[s].replace("Closed — ", ""),
-                count: metrics.stageCounts[s] ?? 0,
-                color: s === "closed_lost" ? STEEL : s === "closed_won" ? NAVY : RUST,
-              }))}
-            />
-          </ChartCard>
+        {/* --- CHARTS ROW 2: full-width analytics placeholder --- */}
+        <div className="mb-2">
+          <div style={{
+            backgroundColor: "hsl(var(--surface-raised))",
+            border: "1px dashed hsl(var(--surface-border))",
+            padding: "14px 16px 20px",
+          }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-mono text-[9px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>Analytics</span>
+              <span className="font-mono text-[8px] tracking-[0.12em] uppercase px-2 py-0.5" style={{ color: "hsl(var(--rust))", border: "1px solid hsl(var(--rust) / 0.3)" }}>Coming Soon</span>
+            </div>
+            <div className="flex items-center justify-center py-6">
+              <span className="font-mono text-[10px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}>
+                Revenue trends · Churn rate · LTV · Cohort retention
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* --- OVERDUE ALERT LIST --- */}
@@ -366,13 +373,7 @@ export default function Dashboard() {
 
       {drill === "funnel" && (
         <DrillDownPanel title="Pipeline Funnel" onClose={() => setDrill(null)}>
-          <SvgFunnelChart
-            steps={STAGE_ORDER.filter(s => s !== "closed_lost").map(s => ({
-              label: STAGE_LABELS[s],
-              count: metrics.stageCounts[s] ?? 0,
-              color: s === "closed_won" ? NAVY : RUST,
-            }))}
-          />
+          <SvgFunnelChart steps={funnelSteps} />
         </DrillDownPanel>
       )}
     </OpsShell>
