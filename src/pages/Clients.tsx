@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import { OpsShell } from "@/components/ops/OpsShell";
 import { MetricsBar } from "@/components/ops/MetricsBar";
-import { useProspects } from "@/hooks/useProspects";
+import { useAllProspects } from "@/hooks/useProspects";
 import { useClients, type ClientWithSubscription } from "@/hooks/useClients";
 import { usePortalInvite } from "@/hooks/usePortalInvite";
 import { useProvisionTenant } from "@/hooks/useProvisionTenant";
@@ -45,7 +45,9 @@ function clientEffectiveRate(c: ClientWithSubscription): number {
 
 export default function Clients() {
   const { data: clients = [], isLoading, isError, refetch } = useClients();
-  const { data: prospects = [] } = useProspects();
+  // MetricsBar requires full prospect set (incl. closed_won) for accurate
+  // founding spots and overdue counts — matches Dashboard and Pipeline behaviour.
+  const { data: prospects = [] } = useAllProspects();
   const { sendInvite, loading: inviteLoading } = usePortalInvite();
   const { provision, loading: provisionLoading } = useProvisionTenant();
 
