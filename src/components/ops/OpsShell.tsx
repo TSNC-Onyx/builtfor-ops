@@ -12,6 +12,25 @@ const NAV = [
   { to: "/billing", label: "Billing" },
 ];
 
+// ---------------------------------------------------------------------------
+// Presentation-layer role display map
+// Canonical role enum values are preserved in the DB and service layer per
+// Master Constitution §LOCKED CANONICAL ROLES. This map is UI-only and never
+// referenced outside the presentation layer.
+// ---------------------------------------------------------------------------
+const ROLE_DISPLAY: Record<string, string> = {
+  platform_admin: "Platform Admin",
+  tenant_owner:   "Chief Builder",
+  manager:        "Manager",
+  staff:          "Staff",
+  portal_user:    "Portal User",
+};
+
+function roleLabel(role: string | null): string | null {
+  if (!role) return null;
+  return ROLE_DISPLAY[role] ?? role;
+}
+
 export function OpsShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const { theme } = useTheme();
@@ -84,7 +103,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
               </span>
               {role && (
                 <span className="font-mono text-[9px] tracking-[0.12em] uppercase leading-tight" style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.65 }}>
-                  {role}
+                  {roleLabel(role)}
                 </span>
               )}
             </div>
@@ -149,7 +168,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
           {profile ? (
             <>
               <div className="font-body text-[13px] leading-tight" style={{ color: "hsl(var(--nav-text))", fontWeight: 500 }}>{profile.full_name}</div>
-              <div className="font-mono text-[9px] tracking-[0.12em] uppercase mt-0.5" style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.7 }}>{profile.role}</div>
+              <div className="font-mono text-[9px] tracking-[0.12em] uppercase mt-0.5" style={{ color: "hsl(var(--nav-text-muted))", opacity: 0.7 }}>{roleLabel(profile.role)}</div>
             </>
           ) : (
             <>
@@ -171,6 +190,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
             <span className="font-mono text-[9px] tracking-[0.12em] uppercase">Sign out</span>
+          </span>
           </button>
         </div>
       </div>
