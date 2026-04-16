@@ -4,11 +4,7 @@ import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-// States returned by the Edge Function proxy
 type ServiceState = "operational" | "degraded" | "outage" | "fetch_error" | "pending";
-
-// "loading" is client-only — used before the first proxy response arrives.
-// Never confused with any server-returned state.
 type DisplayState = ServiceState | "loading";
 
 interface ServiceStatus {
@@ -23,19 +19,19 @@ interface ServiceStatus {
 
 interface ProxyPayload {
   services: ServiceStatus[];
-  checkedAt: string; // ISO timestamp from Edge Function server clock
+  checkedAt: string;
 }
 
 // ---------------------------------------------------------------------------
 // Colour tokens — matched to brand spec
 // ---------------------------------------------------------------------------
 const STATE_COLOR: Record<DisplayState, string> = {
-  operational: "hsl(145,50%,40%)",  // green
-  degraded:    "hsl(38,90%,50%)",   // amber
-  outage:      "hsl(20,63%,47%)",   // rust
-  fetch_error: "hsl(38,90%,50%)",   // amber — unreachable ≠ operational
-  pending:     "hsl(216,21%,62%)",  // steel — not yet configured
-  loading:     "hsl(216,21%,62%)",  // steel — waiting for first response
+  operational: "hsl(145,50%,40%)",
+  degraded:    "hsl(38,90%,50%)",
+  outage:      "hsl(20,63%,47%)",
+  fetch_error: "hsl(38,90%,50%)",
+  pending:     "hsl(216,21%,62%)",
+  loading:     "hsl(216,21%,62%)",
 };
 
 const STATE_LABEL: Record<DisplayState, string> = {
@@ -47,7 +43,6 @@ const STATE_LABEL: Record<DisplayState, string> = {
   loading:     "—",
 };
 
-// Category labels shown as section dividers in the drill-down panel
 const CATEGORY_LABEL: Record<ServiceStatus["category"], string> = {
   platform: "Platform",
   database: "Databases",
@@ -58,7 +53,7 @@ const CATEGORY_LABEL: Record<ServiceStatus["category"], string> = {
 const PROXY_URL =
   "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/platform-status";
 
-const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -115,12 +110,10 @@ function usePlatformStatus(intervalMs = 60_000) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-// Worst state across all non-pending services only.
-// A "pending" slot should not drag the overall badge to amber.
 function worstState(statuses: ServiceStatus[]): DisplayState {
   const rank: Record<DisplayState, number> = {
     loading:     0,
-    pending:     0, // pending is not a health signal — excluded from worst
+    pending:     0,
     operational: 1,
     fetch_error: 2,
     degraded:    3,
@@ -137,7 +130,6 @@ function fmtTime(d: Date) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-// Group services by category for drill-down display
 function groupByCategory(statuses: ServiceStatus[]) {
   const order: ServiceStatus["category"][] = ["platform", "database", "hosting", "ci"];
   const map = new Map<ServiceStatus["category"], ServiceStatus[]>();
@@ -146,8 +138,7 @@ function groupByCategory(statuses: ServiceStatus[]) {
   return order.map(cat => ({ cat, items: map.get(cat) ?? [] })).filter(g => g.items.length > 0);
 }
 
-// Skeleton service names shown while loading
-const SKELETON_NAMES = ["Supabase", "Ops DB", "Tenant DB", "getbuiltfor.com", "Ops Dashboard", "GitHub"];
+const SKELETON_NAMES = ["Supabase", "Cloudflare", "Ops DB", "Tenant DB", "getbuiltfor.com", "GitHub"];
 
 // ---------------------------------------------------------------------------
 // Component
@@ -165,20 +156,54 @@ export function PlatformStatus() {
     ? "fetch_error"
     : worstState(statuses!);
 
-  // Compact bar shows only non-pending services to keep pill row short
   const barServices = statuses?.filter(s => s.state !== "pending") ?? [];
+
+  // ── Right-side controls (badge + details) — shared between mobile and desktop
+  const controls = (
+    <div className="flex items-center gap-3 flex-shrink-0">
+      {checkedAt && (
+        <span
+          className="font-mono text-[8px] tracking-[0.08em] uppercase hidden md:block"
+          style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
+        >
+          {fmtTime(checkedAt)}
+        </span>
+      )}
+      {!isLoading && (
+        <span
+          className="font-mono text-[8px] tracking-[0.1em] uppercase px-1.5 py-0.5"
+          style={{
+            color: STATE_COLOR[overallState],
+            border: `1px solid ${STATE_COLOR[overallState]}40`,
+          }}
+        >
+          {STATE_LABEL[overallState]}
+        </span>
+      )}
+      <button
+        onClick={() => setOpen(true)}
+        className="font-mono text-[8px] tracking-[0.12em] uppercase transition-opacity hover:opacity-60"
+        style={{ color: "hsl(var(--rust))" }}
+      >
+        details ↗
+      </button>
+    </div>
+  );
 
   return (
     <>
-      {/* ── Compact status bar ── */}
+      {/* ── Compact status bar ──
+          Mobile:  flex-col — pills span full width, controls pinned bottom-right
+          Desktop: flex-row — single line, unchanged from before               */}
       <div
-        className="px-4 md:px-6 py-2.5 flex items-center justify-between gap-4"
+        className="px-4 md:px-6 py-2.5 flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4"
         style={{
           backgroundColor: "hsl(var(--surface-raised))",
           borderBottom: "1px solid hsl(var(--surface-border))",
         }}
       >
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Pills row — spans full width on mobile, natural width on desktop */}
+        <div className="flex items-center gap-3 flex-wrap flex-1">
           <span
             className="font-mono text-[8.5px] tracking-[0.14em] uppercase flex-shrink-0"
             style={{ color: "hsl(var(--muted-foreground))" }}
@@ -187,7 +212,7 @@ export function PlatformStatus() {
           </span>
 
           {isLoading ? (
-            SKELETON_NAMES.filter(n => n !== "Ops Dashboard").map(name => (
+            SKELETON_NAMES.map(name => (
               <span key={name} className="flex items-center gap-1.5">
                 <span
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse"
@@ -250,35 +275,9 @@ export function PlatformStatus() {
           )}
         </div>
 
-        <div className="flex items-center gap-3 flex-shrink-0">
-          {checkedAt && (
-            <span
-              className="font-mono text-[8px] tracking-[0.08em] uppercase hidden md:block"
-              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
-            >
-              {fmtTime(checkedAt)}
-            </span>
-          )}
-
-          {!isLoading && (
-            <span
-              className="font-mono text-[8px] tracking-[0.1em] uppercase px-1.5 py-0.5"
-              style={{
-                color: STATE_COLOR[overallState],
-                border: `1px solid ${STATE_COLOR[overallState]}40`,
-              }}
-            >
-              {STATE_LABEL[overallState]}
-            </span>
-          )}
-
-          <button
-            onClick={() => setOpen(true)}
-            className="font-mono text-[8px] tracking-[0.12em] uppercase transition-opacity hover:opacity-60"
-            style={{ color: "hsl(var(--rust))" }}
-          >
-            details ↗
-          </button>
+        {/* Controls — on mobile: right-aligned below pills; on desktop: inline right */}
+        <div className="flex justify-end md:justify-start md:flex-shrink-0">
+          {controls}
         </div>
       </div>
 
@@ -286,7 +285,6 @@ export function PlatformStatus() {
       {open && (
         <DrillDownPanel title="Platform Status" onClose={() => setOpen(false)}>
           <div className="space-y-5">
-            {/* Header */}
             <div className="flex items-center justify-between">
               <span
                 className="font-mono text-[9px] tracking-[0.1em] uppercase"
@@ -308,7 +306,6 @@ export function PlatformStatus() {
               </button>
             </div>
 
-            {/* Proxy error banner */}
             {proxyError && (
               <div
                 className="px-3 py-2.5"
@@ -332,7 +329,6 @@ export function PlatformStatus() {
               </div>
             )}
 
-            {/* Grouped service rows */}
             {statuses &&
               groupByCategory(statuses).map(({ cat, items }) => (
                 <div key={cat}>
@@ -400,7 +396,6 @@ export function PlatformStatus() {
                 </div>
               ))}
 
-            {/* Loading skeletons */}
             {isLoading &&
               SKELETON_NAMES.map(name => (
                 <div
