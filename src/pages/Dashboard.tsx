@@ -5,6 +5,7 @@ import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 import { SvgFunnelChart } from "@/components/ops/SvgFunnelChart";
 import { SvgDonutChart } from "@/components/ops/SvgDonutChart";
 import { PlatformStatus } from "@/components/ops/PlatformStatus";
+import { RevenueAnalytics, DeferredCard } from "@/components/ops/RevenueAnalytics";
 import { useProspects } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
 import { STAGE_LABELS, STAGE_ORDER } from "@/types/pipeline";
@@ -104,8 +105,6 @@ export default function Dashboard() {
   return (
     <OpsShell>
       <MetricsBar prospects={prospects} clients={clients} />
-
-      {/* Platform status bar — sits directly below MetricsBar, above page content */}
       <PlatformStatus />
 
       {isLoading && (
@@ -207,23 +206,17 @@ export default function Dashboard() {
           </ChartCard>
         </div>
 
-        {/* --- CHARTS ROW 2: analytics placeholder --- */}
-        <div className="mb-2">
-          <div style={{
-            backgroundColor: "hsl(var(--surface-raised))",
-            border: "1px dashed hsl(var(--surface-border))",
-            padding: "14px 16px 20px",
-          }}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-mono text-[9px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>Analytics</span>
-              <span className="font-mono text-[8px] tracking-[0.12em] uppercase px-2 py-0.5" style={{ color: "hsl(var(--rust))", border: "1px solid hsl(var(--rust) / 0.3)" }}>Coming Soon</span>
-            </div>
-            <div className="flex items-center justify-center py-6">
-              <span className="font-mono text-[10px] tracking-[0.12em] uppercase" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}>
-                Revenue trends · Churn rate · LTV · Cohort retention
-              </span>
-            </div>
-          </div>
+        {/* --- ANALYTICS ROW: Revenue card + 2 deferred placeholders --- */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
+          <RevenueAnalytics />
+          <DeferredCard
+            title="Delivery Health"
+            reason="Available once onboarding checklists are in use"
+          />
+          <DeferredCard
+            title="Retention & LTV"
+            reason="Available at 10+ active clients"
+          />
         </div>
 
         {/* --- OVERDUE ALERT LIST --- */}
