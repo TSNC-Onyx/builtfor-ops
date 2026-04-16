@@ -138,7 +138,7 @@ export default function Dashboard() {
             label="Founding Spots Used"
             value={`${metrics.designPartners.length}/5`}
             sub={`${Math.max(0, 5 - metrics.designPartners.length)} remaining`}
-            color={metrics.designPartners.length >= 5 ? RUST : NAVY}
+            color={metrics.designPartners.length >= 5 ? RUST : undefined}
           />
         </div>
 
