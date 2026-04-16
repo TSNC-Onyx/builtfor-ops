@@ -16,19 +16,28 @@ export function SvgDonutChart({
   slices,
   size = 100,
   thickness = 22,
+  // When fill=true the SVG ignores `size` and instead expands to fill its
+  // container via width/height 100%. Used by the inline dashboard cards on
+  // desktop so the donut grows with the card rather than sitting fixed at 96px.
+  fill = false,
 }: {
   slices: Slice[];
   size?: number;
   thickness?: number;
+  fill?: boolean;
 }) {
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - thickness / 2 - 2;
   const total = slices.reduce((s, sl) => s + sl.value, 0);
 
+  const svgStyle = fill
+    ? { width: "100%", height: "100%", display: "block", flexShrink: 0 }
+    : { width: size, height: size, flexShrink: 0 };
+
   if (total === 0) {
     return (
-      <svg viewBox={`0 0 ${size} ${size}`} style={{ width: size, height: size, flexShrink: 0 }}>
+      <svg viewBox={`0 0 ${size} ${size}`} style={svgStyle}>
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth={thickness} />
         <text
           x={cx} y={cy + 4}
@@ -49,7 +58,7 @@ export function SvgDonutChart({
   });
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} style={{ width: size, height: size, flexShrink: 0 }}>
+    <svg viewBox={`0 0 ${size} ${size}`} style={svgStyle}>
       <circle
         cx={cx} cy={cy} r={r}
         fill="none"

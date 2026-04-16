@@ -49,26 +49,22 @@ export default function Dashboard() {
       ? Math.round(active.reduce((s, p) => s + daysSince(p.created_at), 0) / active.length)
       : 0;
 
-    // Source breakdown
     const bySource: Record<string, number> = {};
     prospects.forEach(p => {
       const s = p.source ?? "unknown";
       bySource[s] = (bySource[s] ?? 0) + 1;
     });
 
-    // Vertical breakdown (clients)
     const byVertical: Record<string, number> = {};
     clients.forEach(c => {
       byVertical[c.vertical] = (byVertical[c.vertical] ?? 0) + 1;
     });
 
-    // Client status breakdown
     const byStatus: Record<string, number> = {};
     clients.forEach(c => {
       byStatus[c.status] = (byStatus[c.status] ?? 0) + 1;
     });
 
-    // Stage counts for funnel
     const stageCounts = STAGE_ORDER.reduce<Record<string, number>>((acc, s) => {
       acc[s] = prospects.filter(p => p.stage === s).length;
       return acc;
@@ -84,7 +80,6 @@ export default function Dashboard() {
 
   const isLoading = pLoading || cLoading;
 
-  // Source slices for donut
   const sourceColors: Record<string, string> = {
     outreach: NAVY, referral: RUST, trade_show: GREEN, inbound: STEEL, unknown: "hsl(var(--border))",
   };
@@ -92,7 +87,6 @@ export default function Dashboard() {
     label: k, value: v, color: sourceColors[k] ?? STEEL,
   }));
 
-  // Client status slices
   const statusColors: Record<string, string> = {
     onboarding: RUST, active: NAVY, at_risk: "hsl(38,90%,50%)", churned: STEEL, paused: "hsl(var(--border))",
   };
@@ -185,20 +179,32 @@ export default function Dashboard() {
             />
           </ChartCard>
 
-          {/* Source breakdown */}
+          {/* Source breakdown — donut fills the card on desktop */}
           <ChartCard title="Prospects by Source" onExpand={() => setDrill("source")}>
-            <div className="flex items-center gap-5">
-              <SvgDonutChart slices={sourceSlices} size={96} thickness={20} />
+            <div className="flex items-center gap-5 h-full">
+              {/* Constrain donut to a square that fills available card height on desktop */}
+              <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
+                <SvgDonutChart slices={sourceSlices} size={140} thickness={28} />
+              </div>
+              {/* Mobile keeps original compact size */}
+              <div className="md:hidden">
+                <SvgDonutChart slices={sourceSlices} size={96} thickness={20} />
+              </div>
               <Legend slices={sourceSlices} />
             </div>
           </ChartCard>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
-          {/* Client status donut */}
+          {/* Client status donut — same treatment */}
           <ChartCard title="Client Health" onExpand={() => setDrill("client_status")}>
-            <div className="flex items-center gap-5">
-              <SvgDonutChart slices={statusSlices} size={96} thickness={20} />
+            <div className="flex items-center gap-5 h-full">
+              <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
+                <SvgDonutChart slices={statusSlices} size={140} thickness={28} />
+              </div>
+              <div className="md:hidden">
+                <SvgDonutChart slices={statusSlices} size={96} thickness={20} />
+              </div>
               <Legend slices={statusSlices} />
             </div>
           </ChartCard>

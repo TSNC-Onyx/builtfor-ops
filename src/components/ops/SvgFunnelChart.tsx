@@ -17,54 +17,60 @@ export function SvgFunnelChart({ steps }: { steps: FunnelStep[] }) {
   const totalH = steps.length * (barH + gap) - gap;
 
   return (
-    <svg
-      viewBox={`0 0 ${totalW} ${totalH}`}
-      style={{ width: "100%", display: "block", overflow: "visible" }}
-    >
-      {steps.map((s, i) => {
-        const barW = max > 0 ? Math.max(3, (s.count / max) * barAreaW) : 3;
-        const y = i * (barH + gap);
-        const midY = y + barH / 2;
-        return (
-          <g key={s.label}>
-            <text
-              x={labelW - 8}
-              y={midY + 3.5}
-              textAnchor="end"
-              style={{
-                fontFamily: "'DM Mono', monospace",
-                fontSize: "8px",
-                letterSpacing: "0.10em",
-                textTransform: "uppercase",
-                fill: "hsl(var(--muted-foreground))",
-              }}
-            >
-              {s.label}
-            </text>
-            <rect
-              x={labelW} y={y}
-              width={barAreaW} height={barH}
-              fill="hsl(var(--surface-border))" opacity="0.3" rx="1"
-            />
-            <rect
-              x={labelW} y={y}
-              width={barW} height={barH}
-              fill={s.color} opacity="0.9" rx="1"
-            />
-            <text
-              x={labelW + barAreaW + 8}
-              y={midY + 5.5}
-              style={{
-                fontFamily: "'Bebas Neue', sans-serif",
-                fontSize: "15px",
-                fill: "hsl(var(--foreground))",
-              }}
-            >
-              {s.count}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+    // max-w-[420px] on md+ prevents the SVG from stretching beyond a readable
+    // bar width when the card spans a wide desktop column. The SVG still scales
+    // down freely on smaller screens (width: 100%). Mobile is unaffected because
+    // it uses grid-cols-1 where the card never exceeds ~420px anyway.
+    <div className="w-full md:max-w-[420px]">
+      <svg
+        viewBox={`0 0 ${totalW} ${totalH}`}
+        style={{ width: "100%", display: "block", overflow: "visible" }}
+      >
+        {steps.map((s, i) => {
+          const barW = max > 0 ? Math.max(3, (s.count / max) * barAreaW) : 3;
+          const y = i * (barH + gap);
+          const midY = y + barH / 2;
+          return (
+            <g key={s.label}>
+              <text
+                x={labelW - 8}
+                y={midY + 3.5}
+                textAnchor="end"
+                style={{
+                  fontFamily: "'DM Mono', monospace",
+                  fontSize: "8px",
+                  letterSpacing: "0.10em",
+                  textTransform: "uppercase",
+                  fill: "hsl(var(--muted-foreground))",
+                }}
+              >
+                {s.label}
+              </text>
+              <rect
+                x={labelW} y={y}
+                width={barAreaW} height={barH}
+                fill="hsl(var(--surface-border))" opacity="0.3" rx="1"
+              />
+              <rect
+                x={labelW} y={y}
+                width={barW} height={barH}
+                fill={s.color} opacity="0.9" rx="1"
+              />
+              <text
+                x={labelW + barAreaW + 8}
+                y={midY + 5.5}
+                style={{
+                  fontFamily: "'Bebas Neue', sans-serif",
+                  fontSize: "15px",
+                  fill: "hsl(var(--foreground))",
+                }}
+              >
+                {s.count}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
