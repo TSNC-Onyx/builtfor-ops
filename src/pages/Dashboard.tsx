@@ -4,6 +4,7 @@ import { MetricsBar } from "@/components/ops/MetricsBar";
 import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 import { SvgFunnelChart } from "@/components/ops/SvgFunnelChart";
 import { SvgDonutChart } from "@/components/ops/SvgDonutChart";
+import { PlatformStatus } from "@/components/ops/PlatformStatus";
 import { useProspects } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
 import { STAGE_LABELS, STAGE_ORDER } from "@/types/pipeline";
@@ -94,7 +95,6 @@ export default function Dashboard() {
     label: k, value: v, color: statusColors[k] ?? STEEL,
   }));
 
-  // Pipeline Funnel steps: active stages in order, then closed_won (NAVY), then closed_lost (STEEL) at bottom
   const funnelSteps = STAGE_ORDER.map(s => ({
     label: STAGE_LABELS[s],
     count: metrics.stageCounts[s] ?? 0,
@@ -104,6 +104,9 @@ export default function Dashboard() {
   return (
     <OpsShell>
       <MetricsBar prospects={prospects} clients={clients} />
+
+      {/* Platform status bar — sits directly below MetricsBar, above page content */}
+      <PlatformStatus />
 
       {isLoading && (
         <div className="px-5 py-4">
@@ -173,14 +176,12 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* --- CHARTS ROW 1: 3-col on lg, stacked below --- */}
+        {/* --- CHARTS ROW 1: 3-col on lg --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-          {/* Pipeline Funnel — includes closed_lost at bottom in STEEL */}
           <ChartCard title="Pipeline Funnel" onExpand={() => setDrill("funnel")}>
             <SvgFunnelChart steps={funnelSteps} />
           </ChartCard>
 
-          {/* Prospects by Source */}
           <ChartCard title="Prospects by Source" onExpand={() => setDrill("source")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
@@ -193,7 +194,6 @@ export default function Dashboard() {
             </div>
           </ChartCard>
 
-          {/* Client Health */}
           <ChartCard title="Client Health" onExpand={() => setDrill("client_status")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
@@ -207,7 +207,7 @@ export default function Dashboard() {
           </ChartCard>
         </div>
 
-        {/* --- CHARTS ROW 2: full-width analytics placeholder --- */}
+        {/* --- CHARTS ROW 2: analytics placeholder --- */}
         <div className="mb-2">
           <div style={{
             backgroundColor: "hsl(var(--surface-raised))",
