@@ -4,14 +4,11 @@ import { DrillDownPanel } from "@/components/ops/DrillDownPanel";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-// "fetch_error" is a distinct server-side state returned by the Edge Function
-// when a vendor API was unreachable. Kept separate from "unknown" so the UI
-// can render it differently — a confirmed unreachable vendor looks different
-// from a not-yet-loaded state.
-type ServiceState = "operational" | "degraded" | "outage" | "fetch_error";
+// States returned by the Edge Function proxy
+type ServiceState = "operational" | "degraded" | "outage" | "fetch_error" | "pending";
 
-// "loading" is a client-only state used only before the first successful
-// proxy response. It is never returned by the Edge Function.
+// "loading" is client-only — used before the first proxy response arrives.
+// Never confused with any server-returned state.
 type DisplayState = ServiceState | "loading";
 
 interface ServiceStatus {
@@ -19,23 +16,26 @@ interface ServiceStatus {
   state: ServiceState;
   description: string;
   url: string;
-  live: boolean; // true = came from live vendor API; false = proxy error fallback
+  live: boolean;
+  latencyMs?: number;
+  category: "platform" | "database" | "hosting" | "ci";
 }
 
 interface ProxyPayload {
   services: ServiceStatus[];
-  checkedAt: string; // ISO timestamp from the Edge Function server clock
+  checkedAt: string; // ISO timestamp from Edge Function server clock
 }
 
 // ---------------------------------------------------------------------------
 // Colour tokens — matched to brand spec
 // ---------------------------------------------------------------------------
 const STATE_COLOR: Record<DisplayState, string> = {
-  operational: "hsl(145,50%,40%)",
-  degraded:    "hsl(38,90%,50%)",
+  operational: "hsl(145,50%,40%)",  // green
+  degraded:    "hsl(38,90%,50%)",   // amber
   outage:      "hsl(20,63%,47%)",   // rust
-  fetch_error: "hsl(38,90%,50%)",   // amber — "we don't know" ≠ "everything is fine"
-  loading:     "hsl(216,21%,62%)",  // steel — visually inert until data arrives
+  fetch_error: "hsl(38,90%,50%)",   // amber — unreachable ≠ operational
+  pending:     "hsl(216,21%,62%)",  // steel — not yet configured
+  loading:     "hsl(216,21%,62%)",  // steel — waiting for first response
 };
 
 const STATE_LABEL: Record<DisplayState, string> = {
@@ -43,14 +43,21 @@ const STATE_LABEL: Record<DisplayState, string> = {
   degraded:    "Degraded",
   outage:      "Outage",
   fetch_error: "Unreachable",
+  pending:     "Pending",
   loading:     "—",
 };
 
-// Supabase project ref is stable — not a secret, safe in client code.
+// Category labels shown as section dividers in the drill-down panel
+const CATEGORY_LABEL: Record<ServiceStatus["category"], string> = {
+  platform: "Platform",
+  database: "Databases",
+  hosting:  "Hosting",
+  ci:       "CI / Deploy",
+};
+
 const PROXY_URL =
   "https://tsdcxvmywimqfpdkevdx.supabase.co/functions/v1/platform-status";
 
-// If the last successful check is older than this, show a stale-data warning.
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 // ---------------------------------------------------------------------------
@@ -61,26 +68,21 @@ function usePlatformStatus(intervalMs = 60_000) {
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [proxyError, setProxyError] = useState<string | null>(null);
-  // Ref prevents double-fetch in React StrictMode / HMR without useEffect deps churn
   const inFlight = useRef(false);
 
   const check = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
     setIsChecking(true);
-
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-
+      const timeout = setTimeout(() => controller.abort(), 12_000);
       const res = await fetch(PROXY_URL, {
         method: "GET",
-        headers: { "Accept": "application/json" },
+        headers: { Accept: "application/json" },
         signal: controller.signal,
       });
-
       clearTimeout(timeout);
-
       if (!res.ok) {
         setProxyError(`Proxy returned HTTP ${res.status}`);
       } else {
@@ -105,8 +107,7 @@ function usePlatformStatus(intervalMs = 60_000) {
   }, [check, intervalMs]);
 
   const isStale =
-    checkedAt !== null &&
-    Date.now() - checkedAt.getTime() > STALE_THRESHOLD_MS;
+    checkedAt !== null && Date.now() - checkedAt.getTime() > STALE_THRESHOLD_MS;
 
   return { statuses, checkedAt, isChecking, proxyError, isStale, refresh: check };
 }
@@ -114,22 +115,39 @@ function usePlatformStatus(intervalMs = 60_000) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+// Worst state across all non-pending services only.
+// A "pending" slot should not drag the overall badge to amber.
 function worstState(statuses: ServiceStatus[]): DisplayState {
   const rank: Record<DisplayState, number> = {
     loading:     0,
+    pending:     0, // pending is not a health signal — excluded from worst
     operational: 1,
     fetch_error: 2,
     degraded:    3,
     outage:      4,
   };
-  return statuses.reduce<DisplayState>((worst, s) => {
-    return rank[s.state] > rank[worst] ? s.state : worst;
-  }, "operational");
+  return statuses
+    .filter(s => s.state !== "pending")
+    .reduce<DisplayState>((worst, s) => {
+      return rank[s.state] > rank[worst] ? s.state : worst;
+    }, "operational");
 }
 
 function fmtTime(d: Date) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+
+// Group services by category for drill-down display
+function groupByCategory(statuses: ServiceStatus[]) {
+  const order: ServiceStatus["category"][] = ["platform", "database", "hosting", "ci"];
+  const map = new Map<ServiceStatus["category"], ServiceStatus[]>();
+  for (const cat of order) map.set(cat, []);
+  for (const s of statuses) map.get(s.category)?.push(s);
+  return order.map(cat => ({ cat, items: map.get(cat) ?? [] })).filter(g => g.items.length > 0);
+}
+
+// Skeleton service names shown while loading
+const SKELETON_NAMES = ["Supabase", "Ops DB", "Tenant DB", "getbuiltfor.com", "Ops Dashboard", "GitHub"];
 
 // ---------------------------------------------------------------------------
 // Component
@@ -141,12 +159,14 @@ export function PlatformStatus() {
 
   const isLoading = statuses === null && !proxyError;
 
-  // Overall badge state
   const overallState: DisplayState = isLoading
     ? "loading"
     : proxyError
     ? "fetch_error"
     : worstState(statuses!);
+
+  // Compact bar shows only non-pending services to keep pill row short
+  const barServices = statuses?.filter(s => s.state !== "pending") ?? [];
 
   return (
     <>
@@ -158,7 +178,6 @@ export function PlatformStatus() {
           borderBottom: "1px solid hsl(var(--surface-border))",
         }}
       >
-        {/* Left: label + per-service pills */}
         <div className="flex items-center gap-3 flex-wrap">
           <span
             className="font-mono text-[8.5px] tracking-[0.14em] uppercase flex-shrink-0"
@@ -168,8 +187,7 @@ export function PlatformStatus() {
           </span>
 
           {isLoading ? (
-            // Skeleton pills while waiting for first proxy response
-            ["Supabase", "Cloudflare", "GitHub"].map(name => (
+            SKELETON_NAMES.filter(n => n !== "Ops Dashboard").map(name => (
               <span key={name} className="flex items-center gap-1.5">
                 <span
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0 animate-pulse"
@@ -184,7 +202,6 @@ export function PlatformStatus() {
               </span>
             ))
           ) : proxyError ? (
-            // Proxy itself failed — single "check failed" pill, amber not steel
             <span className="flex items-center gap-1.5">
               <span
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -198,7 +215,7 @@ export function PlatformStatus() {
               </span>
             </span>
           ) : (
-            statuses!.map(s => (
+            barServices.map(s => (
               <span key={s.name} className="flex items-center gap-1.5">
                 <span
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -223,7 +240,6 @@ export function PlatformStatus() {
             </span>
           )}
 
-          {/* Stale data warning — shown when last check is >5 min old */}
           {isStale && !isChecking && (
             <span
               className="font-mono text-[8px] tracking-[0.1em] uppercase"
@@ -234,7 +250,6 @@ export function PlatformStatus() {
           )}
         </div>
 
-        {/* Right: timestamp + overall badge + expand */}
         <div className="flex items-center gap-3 flex-shrink-0">
           {checkedAt && (
             <span
@@ -270,8 +285,8 @@ export function PlatformStatus() {
       {/* ── Drill-down panel ── */}
       {open && (
         <DrillDownPanel title="Platform Status" onClose={() => setOpen(false)}>
-          <div className="space-y-4">
-            {/* Header row: timestamp + refresh */}
+          <div className="space-y-5">
+            {/* Header */}
             <div className="flex items-center justify-between">
               <span
                 className="font-mono text-[9px] tracking-[0.1em] uppercase"
@@ -312,66 +327,82 @@ export function PlatformStatus() {
                   className="font-body text-[11px] mt-1"
                   style={{ color: "hsl(var(--muted-foreground))" }}
                 >
-                  Status data is unavailable. Check each vendor status page directly.
+                  Status data unavailable. Check vendor status pages directly.
                 </p>
               </div>
             )}
 
-            {/* Service rows */}
+            {/* Grouped service rows */}
             {statuses &&
-              statuses.map(s => (
-                <div
-                  key={s.name}
-                  className="flex items-start gap-3 px-3 py-3"
-                  style={{
-                    backgroundColor: "hsl(var(--surface-raised))",
-                    border: `1px solid ${STATE_COLOR[s.state]}30`,
-                    borderLeft: `3px solid ${STATE_COLOR[s.state]}`,
-                  }}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full mt-0.5 flex-shrink-0"
-                    style={{ backgroundColor: STATE_COLOR[s.state] }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className="font-mono text-[10px] tracking-[0.1em] uppercase"
-                        style={{ color: "hsl(var(--foreground))" }}
+              groupByCategory(statuses).map(({ cat, items }) => (
+                <div key={cat}>
+                  <div
+                    className="font-mono text-[8px] tracking-[0.14em] uppercase mb-2"
+                    style={{ color: "hsl(var(--muted-foreground))", opacity: 0.5 }}
+                  >
+                    {CATEGORY_LABEL[cat]}
+                  </div>
+                  <div className="space-y-2">
+                    {items.map(s => (
+                      <div
+                        key={s.name}
+                        className="flex items-start gap-3 px-3 py-3"
+                        style={{
+                          backgroundColor: "hsl(var(--surface-raised))",
+                          border: `1px solid ${STATE_COLOR[s.state]}25`,
+                          borderLeft: `3px solid ${STATE_COLOR[s.state]}`,
+                        }}
                       >
-                        {s.name}
-                      </span>
-                      <span
-                        className="font-mono text-[8px] tracking-[0.1em] uppercase flex-shrink-0"
-                        style={{ color: STATE_COLOR[s.state] }}
-                      >
-                        {/* Distinguish "we couldn't reach the status page"
-                            from a confirmed operational/degraded/outage state */}
-                        {s.live ? STATE_LABEL[s.state] : "Unreachable"}
-                      </span>
-                    </div>
-                    <p
-                      className="font-body text-[11px] mt-0.5"
-                      style={{ color: "hsl(var(--muted-foreground))" }}
-                    >
-                      {s.description}
-                    </p>
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-[8px] tracking-[0.08em] uppercase mt-1 inline-block transition-opacity hover:opacity-60"
-                      style={{ color: "hsl(var(--rust))" }}
-                    >
-                      {s.url.replace("https://", "")} ↗
-                    </a>
+                        <span
+                          className="w-2 h-2 rounded-full mt-0.5 flex-shrink-0"
+                          style={{ backgroundColor: STATE_COLOR[s.state] }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span
+                              className="font-mono text-[10px] tracking-[0.1em] uppercase"
+                              style={{ color: "hsl(var(--foreground))" }}
+                            >
+                              {s.name}
+                            </span>
+                            <span
+                              className="font-mono text-[8px] tracking-[0.1em] uppercase flex-shrink-0"
+                              style={{ color: STATE_COLOR[s.state] }}
+                            >
+                              {s.state === "pending"
+                                ? "Pending"
+                                : s.live
+                                ? STATE_LABEL[s.state]
+                                : "Unreachable"}
+                            </span>
+                          </div>
+                          <p
+                            className="font-body text-[11px] mt-0.5"
+                            style={{ color: "hsl(var(--muted-foreground))" }}
+                          >
+                            {s.description}
+                          </p>
+                          {s.url && (
+                            <a
+                              href={s.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-[8px] tracking-[0.08em] uppercase mt-1 inline-block transition-opacity hover:opacity-60"
+                              style={{ color: "hsl(var(--rust))" }}
+                            >
+                              {s.url.replace("https://", "")} ↗
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
 
-            {/* Loading skeletons in drill-down before first data */}
+            {/* Loading skeletons */}
             {isLoading &&
-              ["Supabase", "Cloudflare", "GitHub"].map(name => (
+              SKELETON_NAMES.map(name => (
                 <div
                   key={name}
                   className="px-3 py-3 animate-pulse"
@@ -392,10 +423,12 @@ export function PlatformStatus() {
 
             <p
               className="font-mono text-[8px] tracking-[0.08em] uppercase"
-              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.4 }}
+              style={{ color: "hsl(var(--muted-foreground))", opacity: 0.35 }}
             >
-              Polled every 60s via Edge Function proxy. Vendor APIs: Atlassian Statuspage v2.
-              Stale warning shown if last check exceeds 5 minutes.
+              DB checks: live SELECT round-trip via Edge Function.
+              Hosting: HEAD request to production URL.
+              Platform: Atlassian Statuspage v2.
+              Polled every 60s. Stale warning after 5 min.
             </p>
           </div>
         </DrillDownPanel>
