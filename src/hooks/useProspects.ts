@@ -83,3 +83,25 @@ export function useConvertToClient() {
     onError: (err: Error) => toast.error(`Conversion failed: ${err.message}`),
   });
 }
+
+/**
+ * Soft-deletes a prospect by moving it to closed_lost with a required reason.
+ * The record is preserved for analytics — no hard delete occurs.
+ */
+export function useDismissProspect() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { error } = await supabase
+        .from("prospects")
+        .update({ stage: "closed_lost", lost_reason: reason })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospects"] });
+      toast.success("Lead dismissed and recorded.");
+    },
+    onError: (err: Error) => toast.error(`Dismiss failed: ${err.message}`),
+  });
+}
