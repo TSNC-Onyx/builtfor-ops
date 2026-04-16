@@ -4,7 +4,7 @@ import { MetricsBar } from "@/components/ops/MetricsBar";
 import { PipelineColumn } from "@/components/ops/PipelineColumn";
 import { ProspectDetail } from "@/components/ops/ProspectDetail";
 import { AddProspectModal } from "@/components/ops/AddProspectModal";
-import { useProspects, useUpdateProspectStage } from "@/hooks/useProspects";
+import { useProspects, useAllProspects, useUpdateProspectStage } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
 import { STAGE_ORDER, STAGE_LABELS } from "@/types/pipeline";
 import type { Prospect, ProspectStage } from "@/types/pipeline";
@@ -12,16 +12,20 @@ import type { Prospect, ProspectStage } from "@/types/pipeline";
 const ACTIVE_STAGES: ProspectStage[] = ["lead", "contacted", "demo_scheduled", "proposal_sent", "design_partner"];
 
 export default function Pipeline() {
-  const { data: prospects = [], isLoading, isError } = useProspects();
+  // Active pipeline board uses filtered hook (no closed stages on board)
+  const { data: activeProspects = [], isLoading, isError } = useProspects();
+  // Full set needed for MetricsBar (founding spots, overdue counts) and "All stages" view
+  const { data: allProspects = [] } = useAllProspects();
   const { data: clients = [] } = useClients();
   const updateStage = useUpdateProspectStage();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [viewMode, setViewMode] = useState<"active" | "all">("active");
-  // Mobile: which stage tab is visible
   const [mobileStage, setMobileStage] = useState<ProspectStage>("lead");
   const dragRef = useRef<Prospect | null>(null);
 
+  // Use the appropriate data set based on view mode
+  const prospects = viewMode === "all" ? allProspects : activeProspects;
   const visibleStages = viewMode === "active" ? ACTIVE_STAGES : STAGE_ORDER;
 
   const byStage = STAGE_ORDER.reduce<Record<ProspectStage, Prospect[]>>((acc, s) => {
@@ -53,72 +57,43 @@ export default function Pipeline() {
 
   return (
     <OpsShell>
-      <MetricsBar prospects={prospects} clients={clients} />
+      {/* MetricsBar always receives full prospect set for accurate counts */}
+      <MetricsBar prospects={allProspects} clients={clients} />
 
-      {/* Header */}
       <div className="px-4 md:px-6 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
         <div>
           <h1 className="font-display text-[24px] md:text-[28px] tracking-[0.02em] leading-none" style={{ color: "hsl(var(--foreground))" }}>Pipeline</h1>
-          <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{prospects.length} total</p>
+          <p className="font-body text-[12px] mt-0.5" style={{ color: "hsl(var(--muted-foreground))" }}>{allProspects.length} total</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* View mode toggle — hidden on mobile to save space */}
           <div className="hidden sm:flex" style={{ border: "1px solid hsl(var(--border))" }}>
             {(["active", "all"] as const).map(v => (
-              <button
-                key={v}
-                onClick={() => setViewMode(v)}
+              <button key={v} onClick={() => setViewMode(v)}
                 className="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 transition-colors"
-                style={{
-                  backgroundColor: viewMode === v ? "hsl(var(--nav-active-bg))" : "transparent",
-                  color: viewMode === v ? "hsl(var(--nav-active-text))" : "hsl(var(--muted-foreground))",
-                }}
-              >
-                {v === "active" ? "Active" : "All stages"}
-              </button>
+                style={{ backgroundColor: viewMode === v ? "hsl(var(--nav-active-bg))" : "transparent", color: viewMode === v ? "hsl(var(--nav-active-text))" : "hsl(var(--muted-foreground))" }}
+              >{v === "active" ? "Active" : "All stages"}</button>
             ))}
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
+          <button onClick={() => setShowAdd(true)}
             className="font-mono text-[10px] tracking-[0.12em] uppercase px-3 py-1.5 hover:opacity-90"
             style={{ backgroundColor: "hsl(var(--rust))", color: "hsl(var(--off-white))" }}
-          >
-            + Add
-          </button>
+          >+ Add</button>
         </div>
       </div>
 
-      {/* --- MOBILE VIEW: Stage tab strip + single column --- */}
+      {/* MOBILE VIEW */}
       <div className="md:hidden flex flex-col" style={{ height: "calc(100vh - 190px)" }}>
-        {/* Stage tab strip */}
         <div className="flex overflow-x-auto flex-shrink-0" style={{ borderBottom: "1px solid hsl(var(--border))" }}>
           {visibleStages.map(s => (
-            <button
-              key={s}
-              onClick={() => setMobileStage(s)}
+            <button key={s} onClick={() => setMobileStage(s)}
               className="flex-shrink-0 px-3 py-2 font-mono text-[9px] tracking-[0.1em] uppercase transition-colors"
-              style={{
-                borderBottom: mobileStage === s ? `2px solid hsl(var(--rust))` : "2px solid transparent",
-                color: mobileStage === s ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                backgroundColor: "transparent",
-              }}
-            >
-              {STAGE_LABELS[s].replace("Closed — ", "")} ({byStage[s].length})
-            </button>
+              style={{ borderBottom: mobileStage === s ? `2px solid hsl(var(--rust))` : "2px solid transparent", color: mobileStage === s ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))", backgroundColor: "transparent" }}
+            >{STAGE_LABELS[s].replace("Closed — ", "")} ({byStage[s].length})</button>
           ))}
         </div>
-        {/* Single active column */}
         <div className="flex-1 overflow-y-auto p-3">
-          <PipelineColumn
-            stage={mobileStage}
-            prospects={byStage[mobileStage]}
-            onCardClick={p => setSelectedId(p.id)}
-            onDrop={handleDrop}
-            onDragStart={p => { dragRef.current = p; }}
-            showHeader={false}
-          />
+          <PipelineColumn stage={mobileStage} prospects={byStage[mobileStage]} onCardClick={p => setSelectedId(p.id)} onDrop={handleDrop} onDragStart={p => { dragRef.current = p; }} showHeader={false} />
         </div>
-        {/* Mobile detail overlay */}
         {selectedId && (
           <div className="fixed inset-0 z-40 overflow-y-auto" style={{ backgroundColor: "hsl(var(--surface))", paddingTop: "56px" }}>
             <ProspectDetail prospectId={selectedId} onClose={() => setSelectedId(null)} />
@@ -126,19 +101,12 @@ export default function Pipeline() {
         )}
       </div>
 
-      {/* --- DESKTOP VIEW: Horizontal kanban --- */}
+      {/* DESKTOP VIEW */}
       <div className="hidden md:flex" style={{ height: "calc(100vh - 185px)", overflow: "hidden" }}>
         <div className="flex-1 overflow-x-auto">
           <div className="flex gap-2 p-3 h-full">
             {visibleStages.map(stage => (
-              <PipelineColumn
-                key={stage}
-                stage={stage}
-                prospects={byStage[stage]}
-                onCardClick={p => setSelectedId(p.id)}
-                onDrop={handleDrop}
-                onDragStart={p => { dragRef.current = p; }}
-              />
+              <PipelineColumn key={stage} stage={stage} prospects={byStage[stage]} onCardClick={p => setSelectedId(p.id)} onDrop={handleDrop} onDragStart={p => { dragRef.current = p; }} />
             ))}
           </div>
         </div>

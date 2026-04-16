@@ -6,7 +6,7 @@ import { SvgFunnelChart } from "@/components/ops/SvgFunnelChart";
 import { SvgDonutChart } from "@/components/ops/SvgDonutChart";
 import { PlatformStatus } from "@/components/ops/PlatformStatus";
 import { RevenueAnalytics, DeferredCard } from "@/components/ops/RevenueAnalytics";
-import { useProspects } from "@/hooks/useProspects";
+import { useAllProspects } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
 import { STAGE_LABELS, STAGE_ORDER } from "@/types/pipeline";
 import { isOverdue, formatDate, daysSince } from "@/lib/utils";
@@ -28,7 +28,9 @@ type Drill =
   | null;
 
 export default function Dashboard() {
-  const { data: prospects = [], isLoading: pLoading } = useProspects();
+  // Dashboard requires all stages for accurate KPIs, conversion rate,
+  // funnel chart, and overdue tracking.
+  const { data: prospects = [], isLoading: pLoading } = useAllProspects();
   const { data: clients = [], isLoading: cLoading } = useClients();
   const [drill, setDrill] = useState<Drill>(null);
 
@@ -117,118 +119,56 @@ export default function Dashboard() {
         <h1 className="font-display text-[28px] md:text-[32px] tracking-[0.02em] leading-none mb-5"
           style={{ color: "hsl(var(--foreground))" }}>Dashboard</h1>
 
-        {/* --- KPI CARDS ROW 1 --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-          <KpiCard
-            label="Total Prospects"
-            value={metrics.totalProspects}
-            sub={`${metrics.active.length} active`}
-            onClick={() => setDrill("pipeline_breakdown")}
-          />
-          <KpiCard
-            label="Active Clients"
-            value={metrics.activeClients.length}
-            sub={`${clients.length} total`}
-            onClick={() => setDrill("client_status")}
-          />
-          <KpiCard
-            label="Monthly Recurring"
-            value={`$${metrics.mrr.toLocaleString()}`}
-            sub={`${metrics.activeClients.length} paying`}
-            color={RUST}
-          />
-          <KpiCard
-            label="Founding Spots Used"
-            value={`${metrics.designPartners.length}/5`}
-            sub={`${Math.max(0, 5 - metrics.designPartners.length)} remaining`}
-            color={metrics.designPartners.length >= 5 ? RUST : undefined}
-          />
+          <KpiCard label="Total Prospects" value={metrics.totalProspects} sub={`${metrics.active.length} active`} onClick={() => setDrill("pipeline_breakdown")} />
+          <KpiCard label="Active Clients" value={metrics.activeClients.length} sub={`${clients.length} total`} onClick={() => setDrill("client_status")} />
+          <KpiCard label="Monthly Recurring" value={`$${metrics.mrr.toLocaleString()}`} sub={`${metrics.activeClients.length} paying`} color={RUST} />
+          <KpiCard label="Founding Spots Used" value={`${metrics.designPartners.length}/5`} sub={`${Math.max(0, 5 - metrics.designPartners.length)} remaining`} color={metrics.designPartners.length >= 5 ? RUST : undefined} />
         </div>
 
-        {/* --- KPI CARDS ROW 2 --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-6">
-          <KpiCard
-            label="Overdue Actions"
-            value={metrics.overdue.length}
-            sub="require follow-up"
-            color={metrics.overdue.length > 0 ? RUST : undefined}
-            onClick={metrics.overdue.length > 0 ? () => setDrill("overdue") : undefined}
-            alert={metrics.overdue.length > 0}
-          />
-          <KpiCard
-            label="Conversion Rate"
-            value={metrics.convRate !== null ? `${metrics.convRate}%` : "—"}
-            sub={`${metrics.won.length} won / ${metrics.lost.length} lost`}
-            onClick={() => setDrill("conversion")}
-          />
-          <KpiCard
-            label="Avg Pipeline Age"
-            value={`${metrics.avgAge}d`}
-            sub="active prospects"
-          />
-          <KpiCard
-            label="Top Source"
-            value={Object.entries(metrics.bySource).sort((a, b) => b[1] - a[1])[0]?.[0]?.replace("_", " ") ?? "—"}
-            sub="by volume"
-            onClick={() => setDrill("source")}
-            capitalize
-          />
+          <KpiCard label="Overdue Actions" value={metrics.overdue.length} sub="require follow-up" color={metrics.overdue.length > 0 ? RUST : undefined} onClick={metrics.overdue.length > 0 ? () => setDrill("overdue") : undefined} alert={metrics.overdue.length > 0} />
+          <KpiCard label="Conversion Rate" value={metrics.convRate !== null ? `${metrics.convRate}%` : "—"} sub={`${metrics.won.length} won / ${metrics.lost.length} lost`} onClick={() => setDrill("conversion")} />
+          <KpiCard label="Avg Pipeline Age" value={`${metrics.avgAge}d`} sub="active prospects" />
+          <KpiCard label="Top Source" value={Object.entries(metrics.bySource).sort((a, b) => b[1] - a[1])[0]?.[0]?.replace("_", " ") ?? "—"} sub="by volume" onClick={() => setDrill("source")} capitalize />
         </div>
 
-        {/* --- CHARTS ROW 1: 3-col on lg --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
           <ChartCard title="Pipeline Funnel" onExpand={() => setDrill("funnel")}>
             <SvgFunnelChart steps={funnelSteps} />
           </ChartCard>
-
           <ChartCard title="Prospects by Source" onExpand={() => setDrill("source")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
                 <SvgDonutChart slices={sourceSlices} size={140} thickness={28} />
               </div>
-              <div className="md:hidden">
-                <SvgDonutChart slices={sourceSlices} size={96} thickness={20} />
-              </div>
+              <div className="md:hidden"><SvgDonutChart slices={sourceSlices} size={96} thickness={20} /></div>
               <Legend slices={sourceSlices} />
             </div>
           </ChartCard>
-
           <ChartCard title="Client Health" onExpand={() => setDrill("client_status")}>
             <div className="flex items-center gap-5 h-full">
               <div className="hidden md:flex items-center justify-center" style={{ width: 140, height: 140, flexShrink: 0 }}>
                 <SvgDonutChart slices={statusSlices} size={140} thickness={28} />
               </div>
-              <div className="md:hidden">
-                <SvgDonutChart slices={statusSlices} size={96} thickness={20} />
-              </div>
+              <div className="md:hidden"><SvgDonutChart slices={statusSlices} size={96} thickness={20} /></div>
               <Legend slices={statusSlices} />
             </div>
           </ChartCard>
         </div>
 
-        {/* --- ANALYTICS ROW: Revenue card + 2 deferred placeholders --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
           <RevenueAnalytics />
-          <DeferredCard
-            title="Delivery Health"
-            reason="Available once onboarding checklists are in use"
-          />
-          <DeferredCard
-            title="Retention & LTV"
-            reason="Available at 10+ active clients"
-          />
+          <DeferredCard title="Delivery Health" reason="Available once onboarding checklists are in use" />
+          <DeferredCard title="Retention & LTV" reason="Available at 10+ active clients" />
         </div>
 
-        {/* --- OVERDUE ALERT LIST --- */}
         {metrics.overdue.length > 0 && (
           <div className="mt-6">
-            <div className="font-mono text-[10px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--rust))" }}>
-              Overdue actions ({metrics.overdue.length})
-            </div>
+            <div className="font-mono text-[10px] tracking-[0.16em] uppercase mb-2" style={{ color: "hsl(var(--rust))" }}>Overdue actions ({metrics.overdue.length})</div>
             <div className="space-y-1">
               {metrics.overdue.slice(0, 5).map(p => (
-                <div key={p.id} className="flex items-center gap-4 px-4 py-2.5"
-                  style={{ backgroundColor: "hsl(var(--rust) / 0.07)", border: "1px solid hsl(var(--rust) / 0.20)" }}>
+                <div key={p.id} className="flex items-center gap-4 px-4 py-2.5" style={{ backgroundColor: "hsl(var(--rust) / 0.07)", border: "1px solid hsl(var(--rust) / 0.20)" }}>
                   <div className="flex-1 min-w-0">
                     <span className="font-body text-[13px] font-semibold truncate block" style={{ color: "hsl(var(--foreground))" }}>{p.business_name}</span>
                     <span className="font-body text-[11px]" style={{ color: "hsl(var(--muted-foreground))" }}>{p.next_action}</span>
@@ -238,16 +178,13 @@ export default function Dashboard() {
                 </div>
               ))}
               {metrics.overdue.length > 5 && (
-                <button onClick={() => setDrill("overdue")} className="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-1" style={{ color: "hsl(var(--rust))" }}>
-                  + {metrics.overdue.length - 5} more →
-                </button>
+                <button onClick={() => setDrill("overdue")} className="font-mono text-[10px] tracking-[0.12em] uppercase px-2 py-1" style={{ color: "hsl(var(--rust))" }}>+ {metrics.overdue.length - 5} more →</button>
               )}
             </div>
           </div>
         )}
       </div>
 
-      {/* --- DRILL-DOWN PANELS --- */}
       {drill === "overdue" && (
         <DrillDownPanel title={`Overdue Actions (${metrics.overdue.length})`} onClose={() => setDrill(null)}>
           <div className="space-y-2">
@@ -277,9 +214,7 @@ export default function Dashboard() {
                   {list.length > 0 && (
                     <div className="pl-3 space-y-0.5 mt-0.5">
                       {list.slice(0, 3).map(p => (
-                        <div key={p.id} className="font-body text-[12px] px-2 py-1" style={{ color: "hsl(var(--muted-foreground))", borderLeft: "1px solid hsl(var(--border))" }}>
-                          {p.business_name}
-                        </div>
+                        <div key={p.id} className="font-body text-[12px] px-2 py-1" style={{ color: "hsl(var(--muted-foreground))", borderLeft: "1px solid hsl(var(--border))" }}>{p.business_name}</div>
                       ))}
                       {list.length > 3 && <div className="font-mono text-[9px] pl-2" style={{ color: "hsl(var(--muted-foreground))" }}>+{list.length - 3} more</div>}
                     </div>
@@ -310,9 +245,7 @@ export default function Dashboard() {
               <div key={src}>
                 <div className="font-mono text-[10px] tracking-[0.12em] uppercase mb-1" style={{ color: "hsl(var(--muted-foreground))" }}>{src.replace("_", " ")} — {count}</div>
                 {prospects.filter(p => (p.source ?? "unknown") === src).slice(0, 4).map(p => (
-                  <div key={p.id} className="font-body text-[12px] px-2 py-1 ml-2" style={{ borderLeft: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>
-                    {p.business_name}
-                  </div>
+                  <div key={p.id} className="font-body text-[12px] px-2 py-1 ml-2" style={{ borderLeft: "1px solid hsl(var(--border))", color: "hsl(var(--muted-foreground))" }}>{p.business_name}</div>
                 ))}
               </div>
             ))}
@@ -373,30 +306,16 @@ export default function Dashboard() {
   );
 }
 
-// --- Sub-components ---
-
 function KpiCard({ label, value, sub, color, onClick, alert, capitalize }: {
   label: string; value: string | number; sub?: string;
   color?: string; onClick?: () => void; alert?: boolean; capitalize?: boolean;
 }) {
   const isClickable = !!onClick;
   return (
-    <div
-      onClick={onClick}
-      className={isClickable ? "cursor-pointer transition-opacity hover:opacity-80" : ""}
-      style={{
-        backgroundColor: "hsl(var(--surface-raised))",
-        border: alert ? "1px solid hsl(var(--rust) / 0.4)" : "1px solid hsl(var(--surface-border))",
-        padding: "14px 16px",
-      }}
-    >
+    <div onClick={onClick} className={isClickable ? "cursor-pointer transition-opacity hover:opacity-80" : ""}
+      style={{ backgroundColor: "hsl(var(--surface-raised))", border: alert ? "1px solid hsl(var(--rust) / 0.4)" : "1px solid hsl(var(--surface-border))", padding: "14px 16px" }}>
       <div className="font-mono text-[9px] tracking-[0.14em] uppercase mb-1.5" style={{ color: "hsl(var(--muted-foreground))" }}>{label}</div>
-      <div
-        className="font-display text-[26px] md:text-[30px] leading-none mb-1"
-        style={{ color: color ?? "hsl(var(--foreground))", textTransform: capitalize ? "capitalize" : undefined }}
-      >
-        {value}
-      </div>
+      <div className="font-display text-[26px] md:text-[30px] leading-none mb-1" style={{ color: color ?? "hsl(var(--foreground))", textTransform: capitalize ? "capitalize" : undefined }}>{value}</div>
       {sub && <div className="font-mono text-[9px] tracking-[0.1em] uppercase" style={{ color: "hsl(var(--muted-foreground))", opacity: 0.7 }}>{sub}</div>}
       {isClickable && <div className="font-mono text-[9px] mt-1" style={{ color: "hsl(var(--rust))" }}>drill down →</div>}
     </div>
@@ -408,9 +327,7 @@ function ChartCard({ title, onExpand, children }: { title: string; onExpand?: ()
     <div style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))", padding: "14px 16px 16px" }}>
       <div className="flex items-center justify-between mb-4">
         <span className="font-mono text-[9px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>{title}</span>
-        {onExpand && (
-          <button onClick={onExpand} className="font-mono text-[8px] tracking-[0.12em] uppercase transition-opacity hover:opacity-60" style={{ color: "hsl(var(--rust))" }}>expand ↗</button>
-        )}
+        {onExpand && (<button onClick={onExpand} className="font-mono text-[8px] tracking-[0.12em] uppercase transition-opacity hover:opacity-60" style={{ color: "hsl(var(--rust))" }}>expand ↗</button>)}
       </div>
       {children}
     </div>
