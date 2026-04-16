@@ -187,18 +187,18 @@ export default function Dashboard() {
 
           {/* Source breakdown */}
           <ChartCard title="Prospects by Source" onExpand={() => setDrill("source")}>
-            <div className="flex items-center gap-6">
-              <SvgDonutChart slices={sourceSlices} size={110} thickness={24} />
+            <div className="flex items-center gap-5">
+              <SvgDonutChart slices={sourceSlices} size={96} thickness={20} />
               <Legend slices={sourceSlices} />
             </div>
           </ChartCard>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
           {/* Client status donut */}
           <ChartCard title="Client Health" onExpand={() => setDrill("client_status")}>
-            <div className="flex items-center gap-6">
-              <SvgDonutChart slices={statusSlices} size={110} thickness={24} />
+            <div className="flex items-center gap-5">
+              <SvgDonutChart slices={statusSlices} size={96} thickness={20} />
               <Legend slices={statusSlices} />
             </div>
           </ChartCard>
@@ -407,11 +407,11 @@ function KpiCard({ label, value, sub, color, onClick, alert, capitalize }: {
 
 function ChartCard({ title, onExpand, children }: { title: string; onExpand?: () => void; children: React.ReactNode }) {
   return (
-    <div style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))", padding: "16px" }}>
-      <div className="flex items-center justify-between mb-3">
-        <span className="font-mono text-[10px] tracking-[0.14em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>{title}</span>
+    <div style={{ backgroundColor: "hsl(var(--surface-raised))", border: "1px solid hsl(var(--surface-border))", padding: "14px 16px 16px" }}>
+      <div className="flex items-center justify-between mb-4">
+        <span className="font-mono text-[9px] tracking-[0.16em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>{title}</span>
         {onExpand && (
-          <button onClick={onExpand} className="font-mono text-[9px] tracking-[0.1em] uppercase" style={{ color: "hsl(var(--rust))" }}>expand ↗</button>
+          <button onClick={onExpand} className="font-mono text-[8px] tracking-[0.12em] uppercase transition-opacity hover:opacity-60" style={{ color: "hsl(var(--rust))" }}>expand ↗</button>
         )}
       </div>
       {children}
@@ -421,12 +421,12 @@ function ChartCard({ title, onExpand, children }: { title: string; onExpand?: ()
 
 function Legend({ slices }: { slices: { label: string; value: number; color: string }[] }) {
   return (
-    <div className="space-y-1.5">
+    <div className="flex-1 min-w-0 space-y-2">
       {slices.map(s => (
-        <div key={s.label} className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 flex-shrink-0" style={{ backgroundColor: s.color }} />
-          <span className="font-mono text-[9px] tracking-[0.1em] uppercase" style={{ color: "hsl(var(--muted-foreground))" }}>{s.label.replace("_", " ")}</span>
-          <span className="font-display text-base ml-auto" style={{ color: "hsl(var(--foreground))" }}>{s.value}</span>
+        <div key={s.label} className="flex items-center gap-2 min-w-0">
+          <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: s.color }} />
+          <span className="font-mono text-[8.5px] tracking-[0.08em] uppercase truncate" style={{ color: "hsl(var(--muted-foreground))" }}>{s.label.replace(/_/g, " ")}</span>
+          <span className="font-display text-sm ml-auto flex-shrink-0 pl-2" style={{ color: "hsl(var(--foreground))" }}>{s.value}</span>
         </div>
       ))}
     </div>

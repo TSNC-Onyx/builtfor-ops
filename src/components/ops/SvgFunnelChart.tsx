@@ -7,48 +7,56 @@ interface FunnelStep {
 }
 
 export function SvgFunnelChart({ steps }: { steps: FunnelStep[] }) {
-  const max = Math.max(...steps.map(s => s.count), 1);
-  const barH = 28;
-  const gap = 6;
-  const labelW = 108;
-  const countW = 36;
-  const totalH = steps.length * (barH + gap);
-  const barAreaW = 260;
+  const max = useMemo(() => Math.max(...steps.map(s => s.count), 1), [steps]);
+  const barH = 20;
+  const gap = 10;
+  const labelW = 96;
+  const countW = 28;
+  const barAreaW = 220;
+  const totalW = labelW + barAreaW + countW + 14;
+  const totalH = steps.length * (barH + gap) - gap;
 
   return (
     <svg
-      viewBox={`0 0 ${labelW + barAreaW + countW + 8} ${totalH}`}
-      style={{ width: "100%", overflow: "visible" }}
+      viewBox={`0 0 ${totalW} ${totalH}`}
+      style={{ width: "100%", display: "block", overflow: "visible" }}
     >
       {steps.map((s, i) => {
-        const barW = max > 0 ? Math.max(4, (s.count / max) * barAreaW) : 4;
+        const barW = max > 0 ? Math.max(3, (s.count / max) * barAreaW) : 3;
         const y = i * (barH + gap);
+        const midY = y + barH / 2;
         return (
           <g key={s.label}>
             <text
-              x={labelW - 6}
-              y={y + barH / 2 + 4}
+              x={labelW - 8}
+              y={midY + 3.5}
               textAnchor="end"
               style={{
                 fontFamily: "'DM Mono', monospace",
-                fontSize: "9px",
-                letterSpacing: "0.12em",
+                fontSize: "8px",
+                letterSpacing: "0.10em",
                 textTransform: "uppercase",
                 fill: "hsl(var(--muted-foreground))",
               }}
             >
               {s.label}
             </text>
-            <rect x={labelW} y={y} width={barAreaW} height={barH}
-              fill="hsl(var(--surface-raised))" />
-            <rect x={labelW} y={y} width={barW} height={barH}
-              fill={s.color} opacity="0.85" />
+            <rect
+              x={labelW} y={y}
+              width={barAreaW} height={barH}
+              fill="hsl(var(--surface-border))" opacity="0.3" rx="1"
+            />
+            <rect
+              x={labelW} y={y}
+              width={barW} height={barH}
+              fill={s.color} opacity="0.9" rx="1"
+            />
             <text
-              x={labelW + barAreaW + 6}
-              y={y + barH / 2 + 4}
+              x={labelW + barAreaW + 8}
+              y={midY + 5.5}
               style={{
                 fontFamily: "'Bebas Neue', sans-serif",
-                fontSize: "16px",
+                fontSize: "15px",
                 fill: "hsl(var(--foreground))",
               }}
             >
