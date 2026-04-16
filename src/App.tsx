@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { ThemeProvider } from "@/hooks/useTheme";
@@ -34,6 +34,16 @@ const SUPABASE_CONFIGURED =
   !!import.meta.env.VITE_SUPABASE_URL &&
   import.meta.env.VITE_SUPABASE_URL !== "https://placeholder.supabase.co";
 
+// ---------------------------------------------------------------------------
+// AuthGate
+// Uses onAuthStateChange as the single source of session truth per Supabase
+// JS v2 documentation. INITIAL_SESSION fires synchronously on subscription
+// setup and carries the restored session — eliminating the getSession() race.
+//
+// ensureMembership is called only on SIGNED_IN (not TOKEN_REFRESHED) to avoid
+// repeated upsert attempts. The membership row is already seeded for existing
+// operators; this call is purely a safety net for future new hires.
+// ---------------------------------------------------------------------------
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(
     SUPABASE_CONFIGURED ? undefined : null
@@ -42,38 +52,50 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!SUPABASE_CONFIGURED) return;
 
-    // Resolve session from localStorage on mount.
-    // Sets session state before any child queries can fire.
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    // Single source of truth: onAuthStateChange handles INITIAL_SESSION,
+    // SIGNED_IN, TOKEN_REFRESHED, and SIGNED_OUT in one place.
+    // Do NOT call getSession() concurrently — it creates a race condition
+    // where INITIAL_SESSION (null) from onAuthStateChange fires before
+    // getSession() resolves, briefly rendering Login for authenticated users.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, s) => {
+        // Update session state immediately on every event — no awaits before this.
+        setSession(s);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
-      setSession(s);
-      if (event === "SIGNED_OUT") {
-        queryClient.clear();
-        return;
+        if (event === "SIGNED_OUT") {
+          queryClient.clear();
+          return;
+        }
+
+        // Ensure membership row on SIGNED_IN only.
+        // Wrapped in try/catch — a failure here must never block session state.
+        // TOKEN_REFRESHED excluded: membership already exists after first login.
+        if (event === "SIGNED_IN" && s?.user?.id) {
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("role")
+              .eq("id", s.user.id)
+              .maybeSingle();
+            const role = profile?.role ?? "tenant_owner";
+            await ensureMembership(s.user.id, BUILTFOR_TENANT_ID, role);
+          } catch {
+            // Non-fatal: membership row already exists in all normal cases.
+            // Silently ignored — session proceeds regardless.
+          }
+        }
       }
-      // Ensure membership row exists on every sign-in / token refresh.
-      // Idempotent — safe to call repeatedly. Covers first login and future hires.
-      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && s?.user?.id) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", s.user.id)
-          .maybeSingle();
-        const role = profile?.role ?? "tenant_owner";
-        await ensureMembership(s.user.id, BUILTFOR_TENANT_ID, role);
-      }
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // session === undefined: getSession() not yet resolved — show loader,
-  // hold the entire tree (including all query hooks) behind this gate.
   if (session === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "hsl(var(--background))" }}>
-        <span className="font-mono text-[10px] tracking-[0.18em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading…</span>
+      <div className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: "hsl(var(--background))" }}>
+        <span className="font-mono text-[10px] tracking-[0.18em] uppercase animate-pulse"
+          style={{ color: "hsl(var(--muted-foreground))" }}>Loading…</span>
       </div>
     );
   }
@@ -81,8 +103,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   if (!session && SUPABASE_CONFIGURED) return <Login />;
 
   return (
-    // Provide the resolved session to all descendant hooks via context.
-    // Hooks use enabled: !!session to gate queries on auth readiness.
     <SessionContext.Provider value={session}>
       {children}
       <DiscordFeed />

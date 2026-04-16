@@ -1,5 +1,5 @@
 import { ReactNode, useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ThemeToggle } from "./ThemeToggle";
 import { useTheme } from "@/hooks/useTheme";
 import { useProfile, formatDisplayName } from "@/hooks/useProfile";
@@ -12,12 +12,6 @@ const NAV = [
   { to: "/billing", label: "Billing" },
 ];
 
-// ---------------------------------------------------------------------------
-// Presentation-layer role display map
-// Canonical role enum values are preserved in the DB and service layer per
-// Master Constitution §LOCKED CANONICAL ROLES. This map is UI-only and never
-// referenced outside the presentation layer.
-// ---------------------------------------------------------------------------
 const ROLE_DISPLAY: Record<string, string> = {
   platform_admin: "Platform Admin",
   tenant_owner:   "Chief Builder",
@@ -33,6 +27,7 @@ function roleLabel(role: string | null): string | null {
 
 export function OpsShell({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { theme } = useTheme();
   const profile = useProfile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -47,6 +42,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    // Navigate to root after sign-out. AuthGate will render <Login />
+    // once onAuthStateChange fires SIGNED_OUT and sets session to null.
+    navigate("/", { replace: true });
   }
 
   const displayName = profile ? formatDisplayName(profile.full_name) : null;
