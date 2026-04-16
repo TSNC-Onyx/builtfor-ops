@@ -6,12 +6,14 @@ import { ProspectDetail } from "@/components/ops/ProspectDetail";
 import { AddProspectModal } from "@/components/ops/AddProspectModal";
 import { useProspects, useAllProspects, useUpdateProspectStage } from "@/hooks/useProspects";
 import { useClients } from "@/hooks/useClients";
+import { useSession } from "@/context/SessionContext";
 import { STAGE_ORDER, STAGE_LABELS } from "@/types/pipeline";
 import type { Prospect, ProspectStage } from "@/types/pipeline";
 
 const ACTIVE_STAGES: ProspectStage[] = ["lead", "contacted", "demo_scheduled", "proposal_sent", "design_partner"];
 
 export default function Pipeline() {
+  const session = useSession();
   // Active pipeline board uses filtered hook (no closed stages on board)
   const { data: activeProspects = [], isLoading, isError } = useProspects();
   // Full set needed for MetricsBar (founding spots, overdue counts) and "All stages" view
@@ -39,7 +41,12 @@ export default function Pipeline() {
     dragRef.current = null;
   }
 
-  if (isLoading) return (
+  // In TanStack Query v5, a disabled query (enabled: false) has isLoading = true
+  // when no cached data exists. Guard with !!session so the loading state only
+  // shows when the query is actually running, not while waiting for auth.
+  const queryLoading = isLoading && !!session;
+
+  if (queryLoading) return (
     <OpsShell>
       <div className="flex items-center justify-center h-64">
         <span className="font-mono text-[11px] tracking-[0.14em] uppercase animate-pulse" style={{ color: "hsl(var(--muted-foreground))" }}>Loading pipeline…</span>
