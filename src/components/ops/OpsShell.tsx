@@ -30,7 +30,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
   const profile = useProfile();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const logoStroke = theme === "dark" ? "hsl(38,33%,92%)" : "hsl(213,58%,27%)";
+  const markSrc = theme === "dark" ? "/builtfor-mark-dark.svg" : "/builtfor-mark.svg";
 
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
 
@@ -72,11 +72,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
         </button>
 
         <div className="flex items-center gap-2.5">
-          <svg className="w-7 h-7 flex-shrink-0" viewBox="0 0 38 38" fill="none">
-            <rect x="4" y="12" width="30" height="22" rx="0" fill="none" stroke={logoStroke} strokeWidth="2.2" />
-            <path d="M13 12V9C13 7.34 14.34 6 16 6H22C23.66 6 25 7.34 25 9V12" fill="none" stroke={logoStroke} strokeWidth="2.2" />
-            <text x="7" y="29" fontFamily="'Bebas Neue'" fontSize="16" fill={logoStroke} fontWeight="bold">BF</text>
-          </svg>
+          <img src={markSrc} alt="" className="w-7 h-7 flex-shrink-0 object-contain" />
           <span className="font-display text-[18px] tracking-[0.04em] hidden sm:inline" style={{ color: "hsl(var(--nav-text))" }}>BuiltFor Ops</span>
         </div>
 
@@ -143,11 +139,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
         transition: "transform 0.22s cubic-bezier(0.4,0,0.2,1)",
       }}>
         <div className="h-14 flex items-center px-5 gap-2.5 flex-shrink-0" style={{ borderBottom: "1px solid hsl(var(--nav-border))" }}>
-          <svg className="w-7 h-7 flex-shrink-0" viewBox="0 0 38 38" fill="none">
-            <rect x="4" y="12" width="30" height="22" rx="0" fill="none" stroke={logoStroke} strokeWidth="2.2" />
-            <path d="M13 12V9C13 7.34 14.34 6 16 6H22C23.66 6 25 7.34 25 9V12" fill="none" stroke={logoStroke} strokeWidth="2.2" />
-            <text x="7" y="29" fontFamily="'Bebas Neue'" fontSize="16" fill={logoStroke} fontWeight="bold">BF</text>
-          </svg>
+          <img src={markSrc} alt="" className="w-7 h-7 flex-shrink-0 object-contain" />
           <span className="font-display text-[18px] tracking-[0.04em]" style={{ color: "hsl(var(--nav-text))" }}>BuiltFor Ops</span>
         </div>
         <nav className="flex flex-col gap-1 p-3 flex-1 overflow-y-auto">

@@ -1,0 +1,21 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" id="Layer_2" data-name="Layer 2" viewBox="0 0 274.09 308.75" width="274.0899963378906" height="308.75">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #1a3360;
+      }
+    </style>
+  </defs>
+  <g id="Layer_1-2" data-name="Layer 1">
+    <g>
+      <path class="cls-1" d="M63.15,191.57v23.43H250.65v70.32H39.72v-70.32h16.81v-23.43H16.27v117.18H274.09v-117.18H63.15Z"/>
+      <path class="cls-1" d="M242.27,72.46l-45.33-42.92L7.14,98.63,0,160.64l16.27,44.73,4.71,12.95,35.55-13.21v-20.14h30.06v6.61h-23.45v11.4l31.31-11.4,168.8-61.44-20.98-57.67ZM34.99,188.27l-11.08-30.45,4.86-42.12L191.34,56.53l30.8,29.14,11.09,30.45L34.99,188.27Z"/>
+      <rect class="cls-1" x="63.15" y="191.57" width="23.45" height="87.14"/>
+      <rect class="cls-1" x="63.15" y="238.45" width="164.06" height="23.44"/>
+      <rect class="cls-1" x="40.03" y="107.39" width="164.06" height="23.44" transform="translate(-33.38 48.93) rotate(-20)"/>
+      <path class="cls-1" d="M54.99,106.15L30.95,40.08,141.07,0l24.05,66.07L54.99,106.15Zm5.99-52.06l8.02,22.02,66.07-24.05-8.02-22.02L60.99,54.09Z"/>
+    </g>
+  </g>
+</svg>
