@@ -1,0 +1,12 @@
+src/App.tsx(36,17): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/App.tsx(37,15): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/components/ops/AddProspectModal.tsx(53,7): error TS2345: Argument of type '{ full_name: string; business_name: string; email: string | null; phone: string | null; state: any; source: string | null; vertical: IndustryVertical; vertical_custom: string | null; ... 5 more ...; lost_reason: null; }' is not assignable to parameter of type 'Omit<Prospect, "id" | "created_at" | "updated_at">'.
+  Type '{ full_name: string; business_name: string; email: string | null; phone: string | null; state: any; source: string | null; vertical: IndustryVertical; vertical_custom: string | null; ... 5 more ...; lost_reason: null; }' is missing the following properties from type 'Omit<Prospect, "id" | "created_at" | "updated_at">': team_size, operation_type, current_tool, annual_revenue
+src/components/ops/ProspectDetail.tsx(104,50): error TS18048: 'prospect' is possibly 'undefined'.
+src/hooks/usePortalInvite.ts(29,24): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/hooks/useProfile.ts(41,19): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/hooks/useProfile.ts(42,17): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/lib/supabase.ts(3,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/lib/supabase.ts(4,25): error TS2339: Property 'env' does not exist on type 'ImportMeta'.
+src/pages/Clients.tsx(239,22): error TS2339: Property 'tenant_id' does not exist on type 'ClientWithSubscription'.
+src/pages/Clients.tsx(422,34): error TS2339: Property 'tenant_id' does not exist on type 'ClientWithSubscription'.
